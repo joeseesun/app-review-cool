@@ -1,0 +1,17 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/fetch",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/analyze",
+      "schedule": "0 */12 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/**/*.ts": {
+      "maxDuration": 300
+    }
+  }
+}
