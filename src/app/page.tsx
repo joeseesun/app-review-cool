@@ -44,21 +44,18 @@ export default function Home() {
   };
 
   const loadAppStats = async (appList: App[]) => {
-    const stats: Record<string, any> = {};
+    if (appList.length === 0) return;
 
-    for (const app of appList) {
-      try {
-        const response = await fetch(`/api/apps/${app.id}/stats`);
-        if (response.ok) {
-          const data = await response.json();
-          stats[app.id] = data.data;
-        }
-      } catch (error) {
-        console.error(`Failed to load stats for app ${app.id}:`, error);
+    try {
+      // 使用批量统计 API，一次性获取所有应用的统计信息
+      const response = await fetch('/api/apps/stats');
+      if (response.ok) {
+        const data = await response.json();
+        setAppStats(data.data || {});
       }
+    } catch (error) {
+      console.error('Failed to load app stats:', error);
     }
-
-    setAppStats(stats);
   };
 
   const handleAddApp = () => {

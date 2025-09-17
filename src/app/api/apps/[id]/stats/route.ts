@@ -34,9 +34,11 @@ export async function GET(
       );
     }
 
-    // 获取评论数据
-    const reviews = await storage.getReviews(id);
-    const analysisResults = await storage.getAnalysisResults(id);
+    // 并行获取数据以提高性能
+    const [reviews, analysisResults] = await Promise.all([
+      storage.getReviews(id),
+      storage.getAnalysisResults(id)
+    ]);
 
     // 计算统计信息
     const totalReviews = reviews.length;
@@ -45,26 +47,27 @@ export async function GET(
 
     if (totalReviews > 0) {
       let totalRating = 0;
-      
-      reviews.forEach(review => {
-        const rating = review.rating;
+
+      // 优化：使用 for 循环而不是 forEach，性能更好
+      for (let i = 0; i < reviews.length; i++) {
+        const rating = reviews[i].rating;
         ratingDistribution[rating] = (ratingDistribution[rating] || 0) + 1;
         totalRating += parseInt(rating) || 0;
-      });
-      
+      }
+
       averageRating = totalRating / totalReviews;
     }
 
     // 分析进度
-    const analysisProgress = totalReviews > 0 
-      ? (analysisResults.length / totalReviews) * 100 
+    const analysisProgress = totalReviews > 0
+      ? (analysisResults.length / totalReviews) * 100
       : 0;
 
-    // 最后分析时间
-    const lastAnalyzed = analysisResults.length > 0 
-      ? analysisResults.sort((a, b) => 
-          new Date(b.analyzedAt).getTime() - new Date(a.analyzedAt).getTime()
-        )[0].analyzedAt
+    // 最后分析时间 - 优化：如果没有分析结果就不排序
+    const lastAnalyzed = analysisResults.length > 0
+      ? analysisResults.reduce((latest, current) =>
+          new Date(current.analyzedAt) > new Date(latest.analyzedAt) ? current : latest
+        ).analyzedAt
       : undefined;
 
     const stats: AppStats = {
