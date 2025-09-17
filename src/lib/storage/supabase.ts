@@ -66,7 +66,7 @@ export class SupabaseStorage extends BaseStorage {
       .order('updated', { ascending: false });
     
     if (appId) {
-      query = query.eq('appId', appId);
+      query = query.eq('app_id', appId);
     }
     
     const { data, error } = await query;
@@ -93,7 +93,7 @@ export class SupabaseStorage extends BaseStorage {
     let query = this.supabase
       .from('analysis_results')
       .select('*')
-      .order('analyzedAt', { ascending: false });
+      .order('analyzed_at', { ascending: false });
     
     if (appId) {
       // 通过 reviews 表关联查询
@@ -101,10 +101,10 @@ export class SupabaseStorage extends BaseStorage {
         .from('analysis_results')
         .select(`
           *,
-          reviews!inner(appId)
+          reviews!inner(app_id)
         `)
-        .eq('reviews.appId', appId)
-        .order('analyzedAt', { ascending: false });
+        .eq('reviews.app_id', appId)
+        .order('analyzed_at', { ascending: false });
     }
     
     const { data, error } = await query;
@@ -130,7 +130,7 @@ export class SupabaseStorage extends BaseStorage {
     const { data, error } = await this.supabase
       .from('prompt_templates')
       .select('*')
-      .order('createdAt', { ascending: false });
+      .order('created_at', { ascending: false });
     
     if (error) throw error;
     
@@ -143,8 +143,8 @@ export class SupabaseStorage extends BaseStorage {
         systemPrompt: `你是一个专业的应用评论分析师。请分析用户评论，提取关键信息。`,
         userPromptTemplate: `请分析以下应用评论：\n\n标题：{title}\n内容：{content}\n评分：{rating}星\n版本：{version}`,
         version: '1.0.0',
-        createdAt: new Date().toISOString(),
-        isActive: true
+        created_at: new Date().toISOString(),
+        is_active: true
       };
       
       await this.savePromptTemplates([defaultTemplate]);
