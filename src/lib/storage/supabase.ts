@@ -90,8 +90,28 @@ export class SupabaseStorage extends BaseStorage {
       query = query.eq('app_id', appId);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    // 移除默认的1000条限制，获取所有数据
+    // Supabase 默认限制是1000条，我们需要分页获取所有数据
+    const allData: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+
+    while (true) {
+      const pageQuery = query.range(from, from + pageSize - 1);
+      const { data: pageData, error: pageError } = await pageQuery;
+
+      if (pageError) throw pageError;
+      if (!pageData || pageData.length === 0) break;
+
+      allData.push(...pageData);
+
+      // 如果返回的数据少于页面大小，说明已经是最后一页
+      if (pageData.length < pageSize) break;
+
+      from += pageSize;
+    }
+
+    const data = allData;
 
     // 将数据库字段映射回 TypeScript 字段
     return (data || []).map(review => {

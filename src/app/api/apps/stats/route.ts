@@ -28,10 +28,16 @@ export async function GET(
     }
 
     // 并行获取所有评论和分析结果
-    const [allReviews, allAnalysisResults] = await Promise.all([
-      storage.getReviews(), // 获取所有评论
-      storage.getAnalysisResults() // 获取所有分析结果
-    ]);
+    const allReviews = await storage.getReviews(); // 获取所有评论
+
+    // 暂时跳过分析结果查询，因为数据库表结构问题
+    let allAnalysisResults: any[] = [];
+    try {
+      allAnalysisResults = await storage.getAnalysisResults();
+    } catch (error) {
+      console.warn('Analysis results query failed (expected if table structure not updated):', error);
+      allAnalysisResults = [];
+    }
 
     // 按应用 ID 分组数据
     const reviewsByApp: Record<string, any[]> = {};
