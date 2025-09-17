@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { App, AppStoreReview, AnalysisResult } from '@/types';
 import { ReviewList } from '@/components/reviews/review-list';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Download } from 'lucide-react';
 import { getCountryFlag } from '@/lib/utils';
 
 export default function ReviewsPage() {
@@ -49,6 +49,47 @@ export default function ReviewsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 下载CSV文件
+  const downloadCSV = () => {
+    if (reviews.length === 0) {
+      alert('没有评论数据可以下载');
+      return;
+    }
+
+    // CSV 头部
+    const headers = ['标题', '内容', '评分', '版本', '作者', '时间'];
+
+    // 转换数据为CSV格式
+    const csvData = reviews.map(review => [
+      `"${(review.title || '').replace(/"/g, '""')}"`, // 转义双引号
+      `"${(review.content || '').replace(/"/g, '""')}"`,
+      review.rating || '',
+      `"${(review.version || '').replace(/"/g, '""')}"`,
+      `"${(review.authorName || '').replace(/"/g, '""')}"`,
+      review.updated || ''
+    ]);
+
+    // 组合CSV内容
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.join(','))
+    ].join('\n');
+
+    // 创建并下载文件
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // 添加BOM以支持中文
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${app?.name || 'app'}-评论数据-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (loading) {
@@ -106,10 +147,21 @@ export default function ReviewsPage() {
                 </p>
               </div>
             </div>
-            <Button onClick={loadData} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              刷新
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={downloadCSV}
+                variant="outline"
+                disabled={reviews.length === 0}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                下载CSV
+              </Button>
+              <Button onClick={loadData} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                刷新
+              </Button>
+            </div>
           </div>
         </div>
       </div>
