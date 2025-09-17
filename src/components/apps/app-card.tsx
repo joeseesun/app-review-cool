@@ -104,24 +104,25 @@ export function AppCard({
         </div>
 
         {/* 操作按钮 - 根据权限显示不同按钮 */}
-        {isAdmin ? (
-          // 管理员可以看到所有操作
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onFetch(app)}
-              disabled={isLoading.fetch}
-              className="flex items-center gap-2"
-            >
-              {isLoading.fetch ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              {isLoading.fetch ? '抓取中...' : '立即抓取'}
-            </Button>
+        <div className="grid grid-cols-2 gap-2">
+          {/* 抓取按钮 - 所有用户都可以使用（增量更新安全） */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onFetch(app)}
+            disabled={isLoading.fetch}
+            className="flex items-center gap-2"
+          >
+            {isLoading.fetch ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {isLoading.fetch ? '抓取中...' : '立即抓取'}
+          </Button>
 
+          {/* 分析按钮 - 只有管理员可以使用 */}
+          {isAdmin ? (
             <Button
               variant="outline"
               size="sm"
@@ -136,13 +137,12 @@ export function AppCard({
               )}
               {isLoading.analyze ? '分析中...' : '生成分析'}
             </Button>
-          </div>
-        ) : (
-          // 普通用户只能看到查看功能
-          <div className="text-center text-sm text-gray-500 py-2">
-            队列中，加急联系站长：vista8
-          </div>
-        )}
+          ) : (
+            <div className="flex items-center justify-center text-xs text-gray-500 py-2 px-3 border border-gray-200 rounded">
+              队列中，加急联系站长：vista8
+            </div>
+          )}
+        </div>
 
         {/* 查看按钮 - 所有用户都可以使用 */}
         <div className="grid grid-cols-2 gap-2">
