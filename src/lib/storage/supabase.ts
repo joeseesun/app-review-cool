@@ -39,20 +39,37 @@ export class SupabaseStorage extends BaseStorage {
       .from('apps')
       .select('*')
       .order('name');
-    
+
     if (error) throw error;
-    return data || [];
+
+    // 将数据库字段映射为 TypeScript 字段
+    return (data || []).map(app => {
+      const { last_fetched, ...rest } = app;
+      return {
+        ...rest,
+        lastFetched: last_fetched,
+      };
+    });
   }
 
   async saveApps(apps: App[]): Promise<void> {
     await this.ensureSupabase();
-    
+
+    // 将 TypeScript 字段映射为数据库字段
+    const mappedApps = apps.map(app => {
+      const { lastFetched, ...rest } = app;
+      return {
+        ...rest,
+        last_fetched: lastFetched,
+      };
+    });
+
     // 删除现有数据
     await this.supabase.from('apps').delete().neq('id', '');
-    
+
     // 插入新数据
-    if (apps.length > 0) {
-      const { error } = await this.supabase.from('apps').insert(apps);
+    if (mappedApps.length > 0) {
+      const { error } = await this.supabase.from('apps').insert(mappedApps);
       if (error) throw error;
     }
   }
