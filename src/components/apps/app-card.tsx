@@ -140,7 +140,7 @@ export function AppCard({
         ) : (
           // 普通用户只能看到查看功能
           <div className="text-center text-sm text-gray-500 py-2">
-            仅可查看评论和分析结果
+            队列中，加急联系站长：vista8
           </div>
         )}
 
@@ -150,11 +150,11 @@ export function AppCard({
             variant="secondary"
             size="sm"
             onClick={() => onViewReviews(app)}
-            disabled={!stats?.totalReviews}
+            disabled={false} // 普通用户也可以查看，即使没有评论也能看到空状态
             className="flex items-center gap-2"
           >
             <Eye className="h-4 w-4" />
-            查看评论 {stats?.totalReviews ? `(${stats.totalReviews})` : ''}
+            查看评论 {stats?.totalReviews ? `(${stats.totalReviews})` : '(0)'}
           </Button>
 
           {onViewAnalysis && (
@@ -162,7 +162,7 @@ export function AppCard({
               variant="secondary"
               size="sm"
               onClick={() => onViewAnalysis(app)}
-              disabled={!stats?.totalReviews}
+              disabled={false} // 普通用户也可以查看，即使没有分析也能看到空状态
               className="flex items-center gap-2"
             >
               <BarChart3 className="h-4 w-4" />
