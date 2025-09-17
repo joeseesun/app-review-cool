@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { App } from '@/types';
 import { getCountryFlag, getCountryName, formatRelativeTime } from '@/lib/utils';
-import { Download, Edit, Trash2, BarChart3, RefreshCw } from 'lucide-react';
+import { Download, Trash2, BarChart3, RefreshCw, Eye } from 'lucide-react';
 
 interface AppCardProps {
   app: App;
@@ -14,7 +15,6 @@ interface AppCardProps {
     averageRating: number;
     lastAnalyzed?: string;
   };
-  onEdit: (app: App) => void;
   onDelete: (app: App) => void;
   onFetch: (app: App) => void;
   onAnalyze: (app: App) => void;
@@ -24,30 +24,24 @@ interface AppCardProps {
     fetch?: boolean;
     analyze?: boolean;
   };
+  isAdmin?: boolean; // 新增管理员权限标识
 }
 
 export function AppCard({
   app,
   stats,
-  onEdit,
   onDelete,
   onFetch,
   onAnalyze,
   onViewReviews,
   onViewAnalysis,
   isLoading = {},
+  isAdmin = false,
 }: AppCardProps) {
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const handleDelete = () => {
-    if (showDeleteConfirm) {
-      onDelete(app);
-      setShowDeleteConfirm(false);
-    } else {
-      setShowDeleteConfirm(true);
-      // 3秒后自动取消确认状态
-      setTimeout(() => setShowDeleteConfirm(false), 3000);
-    }
+    onDelete(app);
   };
 
   return (
@@ -63,25 +57,20 @@ export function AppCard({
               ID: {app.id} • {getCountryName(app.country)}
             </p>
           </div>
-          <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onEdit(app)}
-              title="编辑应用"
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleDelete}
-              title={showDeleteConfirm ? "确认删除" : "删除应用"}
-              className={showDeleteConfirm ? "text-red-600 hover:text-red-700" : ""}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+          {/* 只有管理员才能看到删除按钮 */}
+          {isAdmin && (
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowDeleteDialog(true)}
+                title="删除应用"
+                className="text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </CardHeader>
 
@@ -114,46 +103,57 @@ export function AppCard({
           )}
         </div>
 
-        {/* 操作按钮 */}
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onFetch(app)}
-            disabled={isLoading.fetch}
-            className="flex items-center gap-2"
-          >
-            {isLoading.fetch ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            {isLoading.fetch ? '抓取中...' : '立即抓取'}
-          </Button>
+        {/* 操作按钮 - 根据权限显示不同按钮 */}
+        {isAdmin ? (
+          // 管理员可以看到所有操作
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onFetch(app)}
+              disabled={isLoading.fetch}
+              className="flex items-center gap-2"
+            >
+              {isLoading.fetch ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {isLoading.fetch ? '抓取中...' : '立即抓取'}
+            </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onAnalyze(app)}
-            disabled={isLoading.analyze || !stats?.totalReviews}
-            className="flex items-center gap-2"
-          >
-            {isLoading.analyze ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <BarChart3 className="h-4 w-4" />
-            )}
-            {isLoading.analyze ? '分析中...' : '生成分析'}
-          </Button>
-        </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onAnalyze(app)}
+              disabled={isLoading.analyze || !stats?.totalReviews}
+              className="flex items-center gap-2"
+            >
+              {isLoading.analyze ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <BarChart3 className="h-4 w-4" />
+              )}
+              {isLoading.analyze ? '分析中...' : '生成分析'}
+            </Button>
+          </div>
+        ) : (
+          // 普通用户只能看到查看功能
+          <div className="text-center text-sm text-gray-500 py-2">
+            仅可查看评论和分析结果
+          </div>
+        )}
 
+        {/* 查看按钮 - 所有用户都可以使用 */}
         <div className="grid grid-cols-2 gap-2">
           <Button
             variant="secondary"
             size="sm"
             onClick={() => onViewReviews(app)}
             disabled={!stats?.totalReviews}
+            className="flex items-center gap-2"
           >
+            <Eye className="h-4 w-4" />
             查看评论 {stats?.totalReviews ? `(${stats.totalReviews})` : ''}
           </Button>
 
@@ -163,17 +163,25 @@ export function AppCard({
               size="sm"
               onClick={() => onViewAnalysis(app)}
               disabled={!stats?.totalReviews}
+              className="flex items-center gap-2"
             >
+              <BarChart3 className="h-4 w-4" />
               查看分析
             </Button>
           )}
         </div>
 
-        {showDeleteConfirm && (
-          <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-            再次点击删除按钮确认删除此应用
-          </div>
-        )}
+        {/* 删除确认对话框 */}
+        <ConfirmDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          title="确认删除应用"
+          description={`确定要删除应用 "${app.name}" 吗？此操作将同时删除该应用的所有评论和分析数据，且无法恢复。`}
+          confirmText="删除"
+          cancelText="取消"
+          onConfirm={handleDelete}
+          variant="destructive"
+        />
       </CardContent>
     </Card>
   );

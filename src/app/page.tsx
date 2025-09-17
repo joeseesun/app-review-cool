@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { AppForm } from '@/components/apps/app-form';
 import { AppCard } from '@/components/apps/app-card';
+import { useAuth } from '@/hooks/useAuth';
 import { App } from '@/types';
-import { Plus, RefreshCw, BarChart3, Settings } from 'lucide-react';
+import { Plus, RefreshCw, BarChart3, Settings, Shield, LogOut } from 'lucide-react';
 
 export default function Home() {
+  const { isAdmin, logout } = useAuth();
   const [apps, setApps] = useState<App[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingApp, setEditingApp] = useState<App | undefined>();
@@ -60,11 +62,6 @@ export default function Home() {
 
   const handleAddApp = () => {
     setEditingApp(undefined);
-    setShowForm(true);
-  };
-
-  const handleEditApp = (app: App) => {
-    setEditingApp(app);
     setShowForm(true);
   };
 
@@ -244,48 +241,65 @@ export default function Home() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                 AppStore 评论分析系统
+                {isAdmin && (
+                  <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                    管理员模式
+                  </span>
+                )}
               </h1>
               <p className="text-gray-600 mt-1">
-                管理应用，抓取评论，智能分析用户反馈
+                {isAdmin ? '管理应用，抓取评论，智能分析用户反馈' : '查看应用评论和分析结果'}
               </p>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleFetchAll}
-                disabled={loading.fetchAll || apps.length === 0}
-                className="flex items-center gap-2"
-              >
-                {loading.fetchAll ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                批量抓取
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleAnalyzeAll}
-                disabled={loading.analyzeAll || apps.length === 0}
-                className="flex items-center gap-2"
-              >
-                {loading.analyzeAll ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <BarChart3 className="h-4 w-4" />
-                )}
-                批量分析
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => window.location.href = '/settings'}
-                className="flex items-center gap-2"
-              >
-                <Settings className="h-4 w-4" />
-                配置
-              </Button>
+              {isAdmin && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleFetchAll}
+                    disabled={loading.fetchAll || apps.length === 0}
+                    className="flex items-center gap-2"
+                  >
+                    {loading.fetchAll ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    批量抓取
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleAnalyzeAll}
+                    disabled={loading.analyzeAll || apps.length === 0}
+                    className="flex items-center gap-2"
+                  >
+                    {loading.analyzeAll ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <BarChart3 className="h-4 w-4" />
+                    )}
+                    批量分析
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => window.location.href = '/settings'}
+                    className="flex items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    配置
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={logout}
+                    className="flex items-center gap-2 text-red-600 hover:text-red-700"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    退出管理
+                  </Button>
+                </>
+              )}
               <Button onClick={handleAddApp} className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 添加应用
@@ -317,13 +331,13 @@ export default function Home() {
                 key={app.id}
                 app={app}
                 stats={appStats[app.id]}
-                onEdit={handleEditApp}
                 onDelete={handleDeleteApp}
                 onFetch={handleFetchApp}
                 onAnalyze={handleAnalyzeApp}
                 onViewReviews={handleViewReviews}
                 onViewAnalysis={handleViewAnalysis}
                 isLoading={appLoading[app.id]}
+                isAdmin={isAdmin}
               />
             ))}
           </div>
