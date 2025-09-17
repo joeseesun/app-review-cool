@@ -232,13 +232,32 @@ export class SupabaseStorage extends BaseStorage {
 
   async savePromptTemplates(templates: PromptTemplate[]): Promise<void> {
     await this.ensureSupabase();
-    
+
     if (templates.length === 0) return;
-    
+
     const { error } = await this.supabase
       .from('prompt_templates')
       .upsert(templates, { onConflict: 'id' });
-    
+
     if (error) throw error;
+  }
+
+  // 初始化默认应用数据
+  async initializeDefaultApps(): Promise<void> {
+    const apps = await this.getApps();
+    if (apps.length === 0) {
+      const defaultApps = [
+        { id: '6448311069', name: 'ChatGPT', country: 'us' },
+        { id: '6477489729', name: 'Gemini', country: 'us' },
+        { id: '6459478672', name: '豆包', country: 'cn' },
+        { id: '6737597349', name: 'Deepseek', country: 'us' },
+        { id: '6474233312', name: 'Kimi', country: 'cn' },
+        { id: '6466733523', name: '通义', country: 'cn' },
+        { id: '6446882473', name: '文小言', country: 'cn' },
+        { id: '6480446430', name: '元宝', country: 'cn' },
+        { id: '6503676563', name: '即梦', country: 'cn' },
+      ];
+      await this.saveApps(defaultApps);
+    }
   }
 }
