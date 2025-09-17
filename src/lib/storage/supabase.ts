@@ -72,12 +72,21 @@ export class SupabaseStorage extends BaseStorage {
     const { data, error } = await query;
     if (error) throw error;
 
-    // 将 app_id 字段映射回 appId
+    // 将数据库字段映射回 TypeScript 字段
     return (data || []).map(review => {
-      const { app_id, ...rest } = review;
+      const { app_id, author, ...rest } = review;
       return {
         ...rest,
         appId: app_id,
+        authorName: author,
+        // 设置默认值给缺失的字段
+        contentType: 'text',
+        authorUri: '',
+        voteCount: '0',
+        voteSum: '0',
+        link: '',
+        contentTypeLabel: '',
+        country: 'us',
       };
     });
   }
@@ -87,12 +96,25 @@ export class SupabaseStorage extends BaseStorage {
 
     if (reviews.length === 0) return;
 
-    // 将 appId 字段映射为 app_id
+    // 将 TypeScript 字段映射为数据库字段
     const mappedReviews = reviews.map(review => {
-      const { appId, ...rest } = review;
+      const {
+        appId,
+        authorName,
+        contentType,
+        authorUri,
+        voteCount,
+        voteSum,
+        link,
+        contentTypeLabel,
+        country,
+        ...rest
+      } = review;
       return {
         ...rest,
         app_id: appId,
+        author: authorName,
+        // 其他字段暂时不存储到数据库，只保留核心字段
       };
     });
 
