@@ -206,14 +206,14 @@ export class SupabaseStorage extends BaseStorage {
 
   async getPromptTemplates(): Promise<PromptTemplate[]> {
     await this.ensureSupabase();
-    
+
     const { data, error } = await this.supabase
       .from('prompt_templates')
       .select('*')
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
-    
+
     if (!data || data.length === 0) {
       // 创建默认模板
       const defaultTemplate: PromptTemplate = {
@@ -221,17 +221,42 @@ export class SupabaseStorage extends BaseStorage {
         name: '默认分析模板',
         description: '通用的应用评论分析模板',
         systemPrompt: `你是一个专业的应用评论分析师。请分析用户评论，提取关键信息。`,
-        userPromptTemplate: `请分析以下应用评论：\n\n标题：{title}\n内容：{content}\n评分：{rating}星\n版本：{version}`,
+        userPromptTemplate: `请分析以下应用评论：
+
+标题：{title}
+内容：{content}
+评分：{rating}星
+版本：{version}
+
+请以JSON格式返回分析结果：
+{
+  "sentiment": "positive|negative|neutral",
+  "issues": ["问题1", "问题2"],
+  "suggestions": ["建议1", "建议2"],
+  "versionRefs": ["版本相关信息"]
+}`,
         version: '1.0.0',
-        created_at: new Date().toISOString(),
-        is_active: true
+        createdAt: new Date().toISOString(),
+        isActive: true
       };
-      
+
       await this.savePromptTemplates([defaultTemplate]);
       return [defaultTemplate];
     }
-    
-    return data;
+
+    // 映射数据库字段到 TypeScript 接口
+    return data.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      systemPrompt: item.system_prompt,
+      userPromptTemplate: item.user_prompt_template,
+      content: item.content || `${item.system_prompt || ''}\n\n${item.user_prompt_template || ''}`,
+      version: item.version,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+      isActive: item.is_active
+    }));
   }
 
   async savePromptTemplates(templates: PromptTemplate[]): Promise<void> {
@@ -239,9 +264,23 @@ export class SupabaseStorage extends BaseStorage {
 
     if (templates.length === 0) return;
 
+    // 映射 TypeScript 接口字段到数据库字段
+    const mappedTemplates = templates.map(template => ({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      system_prompt: template.systemPrompt,
+      user_prompt_template: template.userPromptTemplate,
+      content: template.content,
+      version: template.version,
+      created_at: template.createdAt,
+      updated_at: template.updatedAt,
+      is_active: template.isActive
+    }));
+
     const { error } = await this.supabase
       .from('prompt_templates')
-      .upsert(templates, { onConflict: 'id' });
+      .upsert(mappedTemplates, { onConflict: 'id' });
 
     if (error) throw error;
   }
