@@ -105,9 +105,8 @@ export function AppCard({
           </div>
         )}
 
-        {/* 操作按钮 - 根据权限显示不同界面 */}
-        {isAdmin ? (
-          // 管理员界面：显示所有技术操作
+        {/* 操作按钮 - 只对管理员显示 */}
+        {isAdmin && (
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
@@ -138,38 +137,6 @@ export function AppCard({
               )}
               {isLoading.analyze ? '分析中...' : '生成分析'}
             </Button>
-          </div>
-        ) : (
-          // 普通用户界面：只显示查看功能和状态提示
-          <div className="space-y-2">
-            {!stats?.totalReviews ? (
-              // 没有数据时显示队列提示
-              <div className="text-center text-sm text-orange-600 py-2 px-3 bg-orange-50 rounded border border-orange-200">
-                队列中，加急联系站长：vista8
-              </div>
-            ) : (
-              // 有数据时显示查看按钮
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.location.href = `/reviews/${app.id}`}
-                  className="flex items-center gap-2"
-                >
-                  <Eye className="h-4 w-4" />
-                  查看评论
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.location.href = `/analysis/${app.id}`}
-                  className="flex items-center gap-2"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  查看分析
-                </Button>
-              </div>
-            )}
           </div>
         )}
 
