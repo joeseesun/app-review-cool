@@ -59,42 +59,56 @@ export class SupabaseStorage extends BaseStorage {
 
   async getReviews(appId?: string): Promise<AppStoreReview[]> {
     await this.ensureSupabase();
-    
+
     let query = this.supabase
       .from('reviews')
       .select('*')
       .order('updated', { ascending: false });
-    
+
     if (appId) {
       query = query.eq('app_id', appId);
     }
-    
+
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+
+    // 将 app_id 字段映射回 appId
+    return (data || []).map(review => ({
+      ...review,
+      appId: review.app_id,
+      app_id: undefined,
+    }));
   }
 
   async saveReviews(reviews: AppStoreReview[]): Promise<void> {
     await this.ensureSupabase();
-    
+
     if (reviews.length === 0) return;
-    
+
+    // 将 appId 字段映射为 app_id
+    const mappedReviews = reviews.map(review => ({
+      ...review,
+      app_id: review.appId,
+      // 移除原来的 appId 字段，避免数据库错误
+      appId: undefined,
+    }));
+
     // 使用 upsert 来处理重复数据
     const { error } = await this.supabase
       .from('reviews')
-      .upsert(reviews, { onConflict: 'id' });
-    
+      .upsert(mappedReviews, { onConflict: 'id' });
+
     if (error) throw error;
   }
 
   async getAnalysisResults(appId?: string): Promise<AnalysisResult[]> {
     await this.ensureSupabase();
-    
+
     let query = this.supabase
       .from('analysis_results')
       .select('*')
       .order('analyzed_at', { ascending: false });
-    
+
     if (appId) {
       // 通过 reviews 表关联查询
       query = this.supabase
@@ -106,21 +120,42 @@ export class SupabaseStorage extends BaseStorage {
         .eq('reviews.app_id', appId)
         .order('analyzed_at', { ascending: false });
     }
-    
+
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+
+    // 将数据库字段映射为 TypeScript 类型字段
+    return (data || []).map(result => ({
+      ...result,
+      reviewId: result.review_id,
+      appId: result.reviews?.app_id || appId || '',
+      analyzedAt: result.analyzed_at,
+      review_id: undefined,
+      analyzed_at: undefined,
+      reviews: undefined,
+    }));
   }
 
   async saveAnalysisResults(results: AnalysisResult[]): Promise<void> {
     await this.ensureSupabase();
-    
+
     if (results.length === 0) return;
-    
+
+    // 将 TypeScript 字段映射为数据库字段
+    const mappedResults = results.map(result => ({
+      ...result,
+      review_id: result.reviewId,
+      analyzed_at: result.analyzedAt,
+      // 移除 TypeScript 字段，避免数据库错误
+      reviewId: undefined,
+      appId: undefined,
+      analyzedAt: undefined,
+    }));
+
     const { error } = await this.supabase
       .from('analysis_results')
-      .upsert(results, { onConflict: 'id' });
-    
+      .upsert(mappedResults, { onConflict: 'id' });
+
     if (error) throw error;
   }
 
