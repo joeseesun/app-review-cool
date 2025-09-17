@@ -15,7 +15,7 @@ interface ReviewListProps {
 }
 
 type SortOption = 'date' | 'rating' | 'sentiment';
-type FilterOption = 'all' | 'positive' | 'negative' | 'neutral' | '5' | '4' | '3' | '2' | '1';
+type FilterOption = 'all' | '5' | '4' | '3' | '2' | '1';
 
 export function ReviewList({ reviews, analysisResults, showAnalysis = true }: ReviewListProps) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,16 +50,9 @@ export function ReviewList({ reviews, analysisResults, showAnalysis = true }: Re
       );
     }
 
-    // 条件过滤
+    // 评分过滤
     if (filter !== 'all') {
-      if (['positive', 'negative', 'neutral'].includes(filter)) {
-        filtered = filtered.filter(review => {
-          const analysis = analysisMap.get(review.id);
-          return analysis?.sentiment === filter;
-        });
-      } else if (['1', '2', '3', '4', '5'].includes(filter)) {
-        filtered = filtered.filter(review => review.rating === filter);
-      }
+      filtered = filtered.filter(review => review.rating.toString() === filter);
     }
 
     // 排序
@@ -121,21 +114,7 @@ export function ReviewList({ reviews, analysisResults, showAnalysis = true }: Re
     return filtered;
   };
 
-  const getSentimentStats = () => {
-    const stats = { positive: 0, negative: 0, neutral: 0, total: 0 };
-    const baseFiltered = getBaseFilteredReviews();
 
-    baseFiltered.forEach(review => {
-      const analysis = analysisMap.get(review.id);
-      if (analysis) {
-        stats[analysis.sentiment]++;
-      }
-      stats.total++;
-    });
-    return stats;
-  };
-
-  const sentimentStats = getSentimentStats();
 
   return (
     <div className="space-y-6">
@@ -200,38 +179,11 @@ export function ReviewList({ reviews, analysisResults, showAnalysis = true }: Re
                   全部 ({getBaseFilteredReviews().length})
                 </Button>
                 
-                {showAnalysis && (
-                  <>
-                    <Button
-                      variant={filter === 'positive' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setFilter('positive')}
-                      className="text-green-600"
-                    >
-                      正面 ({sentimentStats.positive})
-                    </Button>
-                    <Button
-                      variant={filter === 'negative' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setFilter('negative')}
-                      className="text-red-600"
-                    >
-                      负面 ({sentimentStats.negative})
-                    </Button>
-                    <Button
-                      variant={filter === 'neutral' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setFilter('neutral')}
-                      className="text-gray-600"
-                    >
-                      中性 ({sentimentStats.neutral})
-                    </Button>
-                  </>
-                )}
+
 
                 {['5', '4', '3', '2', '1'].map(rating => {
                   const baseFiltered = getBaseFilteredReviews();
-                  const ratingCount = baseFiltered.filter(review => review.rating === rating).length;
+                  const ratingCount = baseFiltered.filter(review => review.rating.toString() === rating).length;
 
                   return (
                     <Button

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { App, AppStoreReview, AnalysisResult } from '@/types';
 import { ReviewList } from '@/components/reviews/review-list';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw, Download } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Download, BarChart3 } from 'lucide-react';
 import { getCountryFlag } from '@/lib/utils';
 
 export default function ReviewsPage() {
@@ -148,6 +148,16 @@ export default function ReviewsPage() {
               </div>
             </div>
             <div className="flex gap-2">
+              {analysisResults.length > 0 && (
+                <Button
+                  onClick={() => router.push(`/analysis/${appId}`)}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  查看分析
+                </Button>
+              )}
               <Button
                 onClick={downloadCSV}
                 variant="outline"
