@@ -93,8 +93,8 @@ export function AppCard({
 
         {/* 最后更新时间 */}
         <div className="text-xs text-gray-500">
-          {app.lastFetched ? (
-            <>最后抓取: {formatRelativeTime(app.lastFetched)}</>
+          {stats?.totalReviews > 0 ? (
+            <>已抓取 {stats.totalReviews} 条评论</>
           ) : (
             <>尚未抓取评论</>
           )}
@@ -138,8 +138,13 @@ export function AppCard({
               {isLoading.analyze ? '分析中...' : '生成分析'}
             </Button>
           ) : (
+            // 普通用户：如果没有评论显示提示，有评论显示分析状态
             <div className="flex items-center justify-center text-xs text-gray-500 py-2 px-3 border border-gray-200 rounded">
-              队列中，加急联系站长：vista8
+              {!stats?.totalReviews ? (
+                <span className="text-orange-600">队列中，加急联系站长：vista8</span>
+              ) : (
+                <span>分析功能需要管理员权限</span>
+              )}
             </div>
           )}
         </div>

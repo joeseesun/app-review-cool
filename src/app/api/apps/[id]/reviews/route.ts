@@ -18,10 +18,10 @@ interface ReviewsResponse {
 // GET /api/apps/[id]/reviews - 获取应用的评论列表
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResponse<ReviewsResponse>>> {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
     
     // 分页参数
@@ -44,8 +44,19 @@ export async function GET(
     }
 
     // 获取评论和分析结果
+    console.log('Getting reviews for app:', id);
     const allReviews = await storage.getReviews(id);
-    const analysisResults = await storage.getAnalysisResults(id);
+    console.log('Found reviews:', allReviews.length);
+
+    // 暂时跳过分析结果查询，因为数据库表结构问题
+    let analysisResults: any[] = [];
+    try {
+      analysisResults = await storage.getAnalysisResults(id);
+      console.log('Found analysis results:', analysisResults.length);
+    } catch (error) {
+      console.warn('Analysis results query failed (expected if table structure not updated):', error);
+      analysisResults = [];
+    }
     
     // 按时间排序（最新的在前）
     const sortedReviews = allReviews.sort((a, b) => 
@@ -73,11 +84,13 @@ export async function GET(
     });
   } catch (error) {
     console.error('Failed to get reviews:', error);
-    
+    console.error('Error details:', error instanceof Error ? error.message : error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
+
     return NextResponse.json(
       {
         success: false,
-        error: '获取评论列表失败',
+        error: `获取评论列表失败: ${error instanceof Error ? error.message : 'Unknown error'}`,
       },
       { status: 500 }
     );

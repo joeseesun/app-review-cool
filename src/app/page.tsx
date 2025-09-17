@@ -71,6 +71,7 @@ export default function Home() {
 
       const url = editingApp ? `/api/apps/${editingApp.id}` : '/api/apps';
       const method = editingApp ? 'PUT' : 'POST';
+      const isNewApp = !editingApp;
 
       const response = await fetch(url, {
         method,
@@ -82,6 +83,38 @@ export default function Home() {
         await loadApps();
         setShowForm(false);
         setEditingApp(undefined);
+
+        // 如果是新添加的应用，自动开始抓取评论
+        if (isNewApp) {
+          // 设置抓取状态
+          setAppLoading(prev => ({
+            ...prev,
+            [appData.id]: { ...prev[appData.id], fetch: true }
+          }));
+
+          // 开始抓取评论
+          try {
+            const fetchResponse = await fetch(`/api/apps/${appData.id}/fetch`, {
+              method: 'POST',
+            });
+
+            if (fetchResponse.ok) {
+              // 抓取成功后重新加载统计数据
+              await loadAppStats(apps);
+            } else {
+              const fetchError = await fetchResponse.json();
+              console.error('Auto fetch failed:', fetchError);
+            }
+          } catch (fetchError) {
+            console.error('Auto fetch error:', fetchError);
+          } finally {
+            // 清除抓取状态
+            setAppLoading(prev => ({
+              ...prev,
+              [appData.id]: { ...prev[appData.id], fetch: false }
+            }));
+          }
+        }
       } else {
         const error = await response.json();
         alert(error.error || '操作失败');

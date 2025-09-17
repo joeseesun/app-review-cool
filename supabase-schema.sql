@@ -27,9 +27,11 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE TABLE IF NOT EXISTS analysis_results (
   id TEXT PRIMARY KEY,
   review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+  app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
   sentiment TEXT,
   issues TEXT[], -- 存储问题数组
   suggestions TEXT[], -- 存储建议数组
+  version_refs TEXT[] DEFAULT '{}', -- 版本相关信息
   analyzed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
