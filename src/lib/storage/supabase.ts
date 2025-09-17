@@ -156,15 +156,7 @@ export class SupabaseStorage extends BaseStorage {
       .order('analyzed_at', { ascending: false });
 
     if (appId) {
-      // 通过 reviews 表关联查询
-      query = this.supabase
-        .from('analysis_results')
-        .select(`
-          *,
-          reviews!inner(app_id)
-        `)
-        .eq('reviews.app_id', appId)
-        .order('analyzed_at', { ascending: false });
+      query = query.eq('app_id', appId);
     }
 
     const { data, error } = await query;
@@ -172,12 +164,13 @@ export class SupabaseStorage extends BaseStorage {
 
     // 将数据库字段映射为 TypeScript 类型字段
     return (data || []).map(result => {
-      const { review_id, analyzed_at, reviews, ...rest } = result;
+      const { review_id, app_id, analyzed_at, version_refs, ...rest } = result;
       return {
         ...rest,
         reviewId: review_id,
-        appId: reviews?.app_id || appId || '',
+        appId: app_id,
         analyzedAt: analyzed_at,
+        versionRefs: version_refs || [],
       };
     });
   }
@@ -189,11 +182,13 @@ export class SupabaseStorage extends BaseStorage {
 
     // 将 TypeScript 字段映射为数据库字段
     const mappedResults = results.map(result => {
-      const { reviewId, appId, analyzedAt, ...rest } = result;
+      const { reviewId, appId, analyzedAt, versionRefs, ...rest } = result;
       return {
         ...rest,
         review_id: reviewId,
+        app_id: appId,  // 保留 appId 字段映射
         analyzed_at: analyzedAt,
+        version_refs: versionRefs || [],  // 处理 versionRefs 字段
       };
     });
 
