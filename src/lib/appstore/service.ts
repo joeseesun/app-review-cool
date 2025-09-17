@@ -158,14 +158,18 @@ export class AppStoreService {
    * 更新应用的最后抓取时间
    */
   private async updateAppLastFetched(appId: string): Promise<void> {
-    const apps = await this.storage.getApps();
-    const updatedApps = apps.map(app => 
-      app.id === appId 
-        ? { ...app, lastFetched: new Date().toISOString() }
-        : app
-    );
-    
-    await this.storage.saveApps(updatedApps);
+    // 暂时禁用 lastFetched 字段更新，因为 Supabase 数据库中还没有这个字段
+    // TODO: 在数据库中添加 last_fetched 字段后重新启用
+    console.log(`Would update lastFetched for app ${appId} to ${new Date().toISOString()}`);
+
+    // const apps = await this.storage.getApps();
+    // const updatedApps = apps.map(app =>
+    //   app.id === appId
+    //     ? { ...app, lastFetched: new Date().toISOString() }
+    //     : app
+    // );
+    //
+    // await this.storage.saveApps(updatedApps);
   }
 
   /**
