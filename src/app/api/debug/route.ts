@@ -66,6 +66,9 @@ export async function GET(request: NextRequest) {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
+        rawError: typeof error === 'object' ? JSON.stringify(error, null, 2) : String(error),
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
       };
     }
     
