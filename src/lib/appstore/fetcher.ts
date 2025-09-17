@@ -94,16 +94,24 @@ export class AppStoreFetcher {
   private static async fetchWithRetry(url: string, retries = this.MAX_RETRIES): Promise<Response> {
     for (let i = 0; i < retries; i++) {
       try {
+        // 创建一个简单的超时控制器
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
+
         const response = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'User-Agent': 'Mozilla/5.0 (compatible; AppReviewBot/1.0)',
+            'Accept': 'application/json',
           },
+          signal: controller.signal,
         });
-        
+
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         return response;
       } catch (error) {
         console.warn(`Fetch attempt ${i + 1} failed:`, error);

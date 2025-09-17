@@ -59,9 +59,19 @@ export async function POST(
     });
   } catch (error) {
     console.error('Failed to fetch reviews:', error);
-    
-    const errorMessage = error instanceof Error ? error.message : '抓取评论失败';
-    
+
+    let errorMessage = '抓取评论失败';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+    } else {
+      console.error('Non-Error object thrown:', error);
+    }
+
     return NextResponse.json(
       {
         success: false,
