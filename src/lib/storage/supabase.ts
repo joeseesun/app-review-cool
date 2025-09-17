@@ -73,11 +73,13 @@ export class SupabaseStorage extends BaseStorage {
     if (error) throw error;
 
     // 将 app_id 字段映射回 appId
-    return (data || []).map(review => ({
-      ...review,
-      appId: review.app_id,
-      app_id: undefined,
-    }));
+    return (data || []).map(review => {
+      const { app_id, ...rest } = review;
+      return {
+        ...rest,
+        appId: app_id,
+      };
+    });
   }
 
   async saveReviews(reviews: AppStoreReview[]): Promise<void> {
@@ -86,12 +88,13 @@ export class SupabaseStorage extends BaseStorage {
     if (reviews.length === 0) return;
 
     // 将 appId 字段映射为 app_id
-    const mappedReviews = reviews.map(review => ({
-      ...review,
-      app_id: review.appId,
-      // 移除原来的 appId 字段，避免数据库错误
-      appId: undefined,
-    }));
+    const mappedReviews = reviews.map(review => {
+      const { appId, ...rest } = review;
+      return {
+        ...rest,
+        app_id: appId,
+      };
+    });
 
     // 使用 upsert 来处理重复数据
     const { error } = await this.supabase
@@ -125,15 +128,15 @@ export class SupabaseStorage extends BaseStorage {
     if (error) throw error;
 
     // 将数据库字段映射为 TypeScript 类型字段
-    return (data || []).map(result => ({
-      ...result,
-      reviewId: result.review_id,
-      appId: result.reviews?.app_id || appId || '',
-      analyzedAt: result.analyzed_at,
-      review_id: undefined,
-      analyzed_at: undefined,
-      reviews: undefined,
-    }));
+    return (data || []).map(result => {
+      const { review_id, analyzed_at, reviews, ...rest } = result;
+      return {
+        ...rest,
+        reviewId: review_id,
+        appId: reviews?.app_id || appId || '',
+        analyzedAt: analyzed_at,
+      };
+    });
   }
 
   async saveAnalysisResults(results: AnalysisResult[]): Promise<void> {
@@ -142,15 +145,14 @@ export class SupabaseStorage extends BaseStorage {
     if (results.length === 0) return;
 
     // 将 TypeScript 字段映射为数据库字段
-    const mappedResults = results.map(result => ({
-      ...result,
-      review_id: result.reviewId,
-      analyzed_at: result.analyzedAt,
-      // 移除 TypeScript 字段，避免数据库错误
-      reviewId: undefined,
-      appId: undefined,
-      analyzedAt: undefined,
-    }));
+    const mappedResults = results.map(result => {
+      const { reviewId, appId, analyzedAt, ...rest } = result;
+      return {
+        ...rest,
+        review_id: reviewId,
+        analyzed_at: analyzedAt,
+      };
+    });
 
     const { error } = await this.supabase
       .from('analysis_results')
