@@ -47,7 +47,7 @@ export class SupabaseStorage extends BaseStorage {
       const { last_fetched, ...rest } = app;
       return {
         ...rest,
-        lastFetched: last_fetched,
+        lastFetched: last_fetched || undefined, // 如果字段不存在，设为 undefined
       };
     });
   }
@@ -58,10 +58,14 @@ export class SupabaseStorage extends BaseStorage {
     // 将 TypeScript 字段映射为数据库字段
     const mappedApps = apps.map(app => {
       const { lastFetched, ...rest } = app;
-      return {
-        ...rest,
-        last_fetched: lastFetched,
-      };
+      const mappedApp: any = { ...rest };
+
+      // 只有当 lastFetched 存在且数据库支持该字段时才添加
+      if (lastFetched) {
+        mappedApp.last_fetched = lastFetched;
+      }
+
+      return mappedApp;
     });
 
     // 删除现有数据
