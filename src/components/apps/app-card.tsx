@@ -91,38 +91,51 @@ export function AppCard({
           </div>
         )}
 
-        {/* 最后更新时间 */}
+        {/* 状态信息 - 根据用户权限显示不同内容 */}
         <div className="text-xs text-gray-500">
-          {stats?.totalReviews > 0 ? (
-            <>已抓取 {stats.totalReviews} 条评论</>
+          {isAdmin ? (
+            // 管理员看到技术细节
+            <>
+              {stats?.totalReviews > 0 ? (
+                <>已抓取 {stats.totalReviews} 条评论</>
+              ) : (
+                <>尚未抓取评论</>
+              )}
+              {stats?.lastAnalyzed && (
+                <> • 最后分析: {formatRelativeTime(stats.lastAnalyzed)}</>
+              )}
+            </>
           ) : (
-            <>尚未抓取评论</>
-          )}
-          {stats?.lastAnalyzed && (
-            <> • 最后分析: {formatRelativeTime(stats.lastAnalyzed)}</>
+            // 普通用户看到友好提示
+            <>
+              {stats?.totalReviews > 0 ? (
+                <>数据已更新，可查看评论和分析</>
+              ) : (
+                <>数据准备中，请稍后查看</>
+              )}
+            </>
           )}
         </div>
 
-        {/* 操作按钮 - 根据权限显示不同按钮 */}
-        <div className="grid grid-cols-2 gap-2">
-          {/* 抓取按钮 - 所有用户都可以使用（增量更新安全） */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onFetch(app)}
-            disabled={isLoading.fetch}
-            className="flex items-center gap-2"
-          >
-            {isLoading.fetch ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            {isLoading.fetch ? '抓取中...' : '立即抓取'}
-          </Button>
+        {/* 操作按钮 - 根据权限显示不同界面 */}
+        {isAdmin ? (
+          // 管理员界面：显示所有技术操作
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onFetch(app)}
+              disabled={isLoading.fetch}
+              className="flex items-center gap-2"
+            >
+              {isLoading.fetch ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {isLoading.fetch ? '抓取中...' : '立即抓取'}
+            </Button>
 
-          {/* 分析按钮 - 只有管理员可以使用 */}
-          {isAdmin ? (
             <Button
               variant="outline"
               size="sm"
@@ -137,17 +150,40 @@ export function AppCard({
               )}
               {isLoading.analyze ? '分析中...' : '生成分析'}
             </Button>
-          ) : (
-            // 普通用户：如果没有评论显示提示，有评论显示分析状态
-            <div className="flex items-center justify-center text-xs text-gray-500 py-2 px-3 border border-gray-200 rounded">
-              {!stats?.totalReviews ? (
-                <span className="text-orange-600">队列中，加急联系站长：vista8</span>
-              ) : (
-                <span>分析功能需要管理员权限</span>
-              )}
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          // 普通用户界面：只显示查看功能和状态提示
+          <div className="space-y-2">
+            {!stats?.totalReviews ? (
+              // 没有数据时显示队列提示
+              <div className="text-center text-sm text-orange-600 py-2 px-3 bg-orange-50 rounded border border-orange-200">
+                队列中，加急联系站长：vista8
+              </div>
+            ) : (
+              // 有数据时显示查看按钮
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.href = `/reviews/${app.id}`}
+                  className="flex items-center gap-2"
+                >
+                  <Eye className="h-4 w-4" />
+                  查看评论
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.href = `/analysis/${app.id}`}
+                  className="flex items-center gap-2"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  查看分析
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 查看按钮 - 所有用户都可以使用 */}
         <div className="grid grid-cols-2 gap-2">
