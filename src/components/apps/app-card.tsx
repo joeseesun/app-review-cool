@@ -91,31 +91,19 @@ export function AppCard({
           </div>
         )}
 
-        {/* 状态信息 - 根据用户权限显示不同内容 */}
-        <div className="text-xs text-gray-500">
-          {isAdmin ? (
-            // 管理员看到技术细节
-            <>
-              {stats?.totalReviews > 0 ? (
-                <>已抓取 {stats.totalReviews} 条评论</>
-              ) : (
-                <>尚未抓取评论</>
-              )}
-              {stats?.lastAnalyzed && (
-                <> • 最后分析: {formatRelativeTime(stats.lastAnalyzed)}</>
-              )}
-            </>
-          ) : (
-            // 普通用户看到友好提示
-            <>
-              {stats?.totalReviews > 0 ? (
-                <>数据已更新，可查看评论和分析</>
-              ) : (
-                <>数据准备中，请稍后查看</>
-              )}
-            </>
-          )}
-        </div>
+        {/* 状态信息 - 只对管理员显示技术细节 */}
+        {isAdmin && (
+          <div className="text-xs text-gray-500">
+            {stats?.totalReviews > 0 ? (
+              <>已抓取 {stats.totalReviews} 条评论</>
+            ) : (
+              <>尚未抓取评论</>
+            )}
+            {stats?.lastAnalyzed && (
+              <> • 最后分析: {formatRelativeTime(stats.lastAnalyzed)}</>
+            )}
+          </div>
+        )}
 
         {/* 操作按钮 - 根据权限显示不同界面 */}
         {isAdmin ? (
