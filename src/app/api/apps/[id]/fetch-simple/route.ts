@@ -20,17 +20,23 @@ export async function POST(
       );
     }
 
-    // 直接使用最简单的fetch
+    // 直接使用最简单的fetch，添加更多headers
     const url = `https://itunes.apple.com/${app.country}/rss/customerreviews/id=${id}/json`;
-    
+
     console.log('Fetching from:', url);
-    
+
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AppReviewBot/1.0)',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
       },
+      // 不设置超时，让Vercel处理
     });
-    
+
     console.log('Response status:', response.status);
     
     if (!response.ok) {
