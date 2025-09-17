@@ -139,6 +139,79 @@ export class KimiClient {
   }
 
   /**
+   * 超大规模批量分析 - 支持数千条评论的智能分批处理
+   */
+  async analyzeReviewsMassive(
+    requests: AnalysisRequest[],
+    promptTemplate: PromptTemplate,
+    options: {
+      maxTokensPerBatch?: number;
+      maxConcurrentBatches?: number;
+      progressCallback?: (processed: number, total: number) => void;
+    } = {}
+  ): Promise<AnalysisResponse[]> {
+    const {
+      maxTokensPerBatch = 8000, // 增加到8000 tokens，充分利用Kimi的上下文
+      maxConcurrentBatches = 3,  // 并发处理3个批次
+      progressCallback
+    } = options;
+
+    console.log(`Starting massive analysis of ${requests.length} reviews`);
+    console.log(`Batch size: ~${maxTokensPerBatch} tokens, Concurrency: ${maxConcurrentBatches}`);
+
+    const batches = this.createOptimalBatches(requests, promptTemplate, maxTokensPerBatch);
+    console.log(`Created ${batches.length} optimal batches`);
+
+    const results: AnalysisResponse[] = [];
+    let processedCount = 0;
+
+    // 分组处理批次，控制并发数
+    for (let i = 0; i < batches.length; i += maxConcurrentBatches) {
+      const batchGroup = batches.slice(i, i + maxConcurrentBatches);
+
+      console.log(`Processing batch group ${Math.floor(i / maxConcurrentBatches) + 1}/${Math.ceil(batches.length / maxConcurrentBatches)}`);
+
+      // 并发处理当前组的批次
+      const groupPromises = batchGroup.map(async (batch, index) => {
+        const batchIndex = i + index + 1;
+        console.log(`Starting batch ${batchIndex}/${batches.length} with ${batch.length} reviews`);
+
+        try {
+          const batchResults = await this.processBatch(batch, promptTemplate);
+          console.log(`Completed batch ${batchIndex}/${batches.length}`);
+          return batchResults;
+        } catch (error) {
+          console.error(`Failed batch ${batchIndex}:`, error);
+          // 返回默认结果而不是失败
+          return batch.map(() => this.getDefaultAnalysisResponse());
+        }
+      });
+
+      const groupResults = await Promise.all(groupPromises);
+
+      // 合并结果
+      for (const batchResults of groupResults) {
+        results.push(...batchResults);
+        processedCount += batchResults.length;
+
+        // 调用进度回调
+        if (progressCallback) {
+          progressCallback(processedCount, requests.length);
+        }
+      }
+
+      // 批次组之间添加延迟，避免API限流
+      if (i + maxConcurrentBatches < batches.length) {
+        console.log('Waiting between batch groups...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    console.log(`Massive analysis completed: ${results.length} results`);
+    return results;
+  }
+
+  /**
    * 优化批量分析 - 根据 token 限制动态调整批次大小
    */
   async analyzeReviewsBatchOptimized(
@@ -181,6 +254,40 @@ export class KimiClient {
     }
 
     return results;
+  }
+
+  /**
+   * 创建最优批次分组
+   */
+  private createOptimalBatches(
+    requests: AnalysisRequest[],
+    promptTemplate: PromptTemplate,
+    maxTokensPerBatch: number
+  ): AnalysisRequest[][] {
+    const batches: AnalysisRequest[][] = [];
+    let currentBatch: AnalysisRequest[] = [];
+    let currentTokens = 0;
+
+    for (const request of requests) {
+      const requestTokens = this.estimateTokens(request, promptTemplate.content);
+
+      // 如果添加当前请求会超过token限制，且当前批次不为空，则开始新批次
+      if (currentTokens + requestTokens > maxTokensPerBatch && currentBatch.length > 0) {
+        batches.push([...currentBatch]);
+        currentBatch = [];
+        currentTokens = 0;
+      }
+
+      currentBatch.push(request);
+      currentTokens += requestTokens;
+    }
+
+    // 添加最后一个批次
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+
+    return batches;
   }
 
   /**

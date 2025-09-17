@@ -91,12 +91,32 @@ export class AnalysisService {
 
     console.log(`Prepared ${analysisRequests.length} analysis requests with optimized data`);
 
-    // 使用优化的批量分析 - 根据 token 限制动态调整
-    const analysisResponses = await this.kimiClient.analyzeReviewsBatchOptimized(
-      analysisRequests,
-      promptTemplate,
-      3000 // 每批次最大 token 数
-    );
+    // 根据评论数量选择分析策略
+    let analysisResponses: any[];
+
+    if (analysisRequests.length > 100) {
+      // 大规模分析：使用并发批处理
+      console.log(`Using massive analysis for ${analysisRequests.length} reviews`);
+      analysisResponses = await this.kimiClient.analyzeReviewsMassive(
+        analysisRequests,
+        promptTemplate,
+        {
+          maxTokensPerBatch: 8000,
+          maxConcurrentBatches: 3,
+          progressCallback: (processed, total) => {
+            console.log(`Analysis progress: ${processed}/${total} (${Math.round(processed/total*100)}%)`);
+          }
+        }
+      );
+    } else {
+      // 小规模分析：使用标准批处理
+      console.log(`Using standard batch analysis for ${analysisRequests.length} reviews`);
+      analysisResponses = await this.kimiClient.analyzeReviewsBatchOptimized(
+        analysisRequests,
+        promptTemplate,
+        6000 // 增加批次大小
+      );
+    }
 
     // 构建分析结果
     const analysisResults: AnalysisResult[] = reviewsToAnalyze.map((review, index) => ({

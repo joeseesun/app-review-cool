@@ -47,6 +47,27 @@ export async function GET(request: NextRequest) {
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
+
+    // 测试抓取功能
+    let fetchTest = null;
+    try {
+      const { AppStoreService } = await import('@/lib/appstore/service');
+      const appStoreService = new AppStoreService();
+
+      // 尝试抓取少量评论
+      const reviews = await appStoreService.fetchAppReviews('6448311069', false);
+      fetchTest = {
+        success: true,
+        reviewCount: reviews.length,
+        sampleReview: reviews[0] || null,
+      };
+    } catch (error) {
+      fetchTest = {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      };
+    }
     
     return NextResponse.json({
       success: true,
@@ -59,6 +80,7 @@ export async function GET(request: NextRequest) {
           error: appsError,
         },
         networkTest,
+        fetchTest,
         timestamp: new Date().toISOString(),
       }
     });

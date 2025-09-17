@@ -30,6 +30,12 @@ interface AppStoreEntry {
 interface AppStoreResponse {
   feed: {
     entry: AppStoreEntry[];
+    link?: Array<{
+      attributes: {
+        rel: string;
+        href: string;
+      };
+    }>;
   };
 }
 
@@ -39,14 +45,90 @@ export class AppStoreFetcher {
   private static readonly RETRY_DELAY = 1000; // 1 second
 
   /**
-   * 抓取指定应用的评论
+   * 抓取指定应用的评论（支持分页和增量更新）
    */
   static async fetchReviews(config: FetchConfig): Promise<AppStoreReview[]> {
     const { appId, country, incremental, lastFetched } = config;
-    const url = `${this.BASE_URL}/${country}/rss/customerreviews/id=${appId}/json`;
-    
-    console.log(`Fetching reviews for app ${appId} from ${country}...`);
-    
+
+    console.log(`Starting to fetch reviews for app ${appId} from ${country}...`);
+    console.log(`Incremental: ${incremental}, Last fetched: ${lastFetched}`);
+
+    try {
+      const allReviews: AppStoreReview[] = [];
+      let page = 1;
+      let hasMorePages = true;
+      let shouldStop = false;
+
+      while (hasMorePages && !shouldStop) {
+        console.log(`Fetching page ${page}...`);
+
+        const pageReviews = await this.fetchPageReviews(appId, country, page);
+
+        if (pageReviews.length === 0) {
+          console.log(`No reviews found on page ${page}, stopping`);
+          break;
+        }
+
+        // 如果是增量抓取，检查是否遇到了已有的评论
+        if (incremental && lastFetched) {
+          const lastFetchedDate = new Date(lastFetched);
+          const newReviews = pageReviews.filter(review => new Date(review.updated) > lastFetchedDate);
+
+          if (newReviews.length < pageReviews.length) {
+            // 这一页包含了已有的评论，只取新的部分
+            allReviews.push(...newReviews);
+            console.log(`Found ${newReviews.length} new reviews on page ${page}, stopping incremental fetch`);
+            shouldStop = true;
+          } else {
+            // 这一页全是新评论
+            allReviews.push(...newReviews);
+            console.log(`All ${newReviews.length} reviews on page ${page} are new`);
+          }
+        } else {
+          // 非增量抓取，添加所有评论
+          allReviews.push(...pageReviews);
+          console.log(`Added ${pageReviews.length} reviews from page ${page}`);
+        }
+
+        // 检查是否还有更多页面
+        hasMorePages = await this.hasMorePages(appId, country, page);
+        page++;
+
+        // 防止无限循环，最多抓取20页
+        if (page > 20) {
+          console.log(`Reached maximum page limit (20), stopping`);
+          break;
+        }
+
+        // 添加延迟避免请求过快
+        if (hasMorePages && !shouldStop) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      console.log(`Fetch completed. Total reviews: ${allReviews.length}`);
+
+      // 去重处理（基于评论ID）
+      const uniqueReviews = this.deduplicateReviews(allReviews);
+      console.log(`After deduplication: ${uniqueReviews.length} unique reviews`);
+
+      return uniqueReviews;
+    } catch (error) {
+      console.error(`Failed to fetch reviews for app ${appId}:`, error);
+      if (error instanceof Error) {
+        console.error(`Error message: ${error.message}`);
+        console.error(`Error stack: ${error.stack}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 抓取指定页面的评论
+   */
+  private static async fetchPageReviews(appId: string, country: string, page: number): Promise<AppStoreReview[]> {
+    const url = `${this.BASE_URL}/${country}/rss/customerreviews/id=${appId}/page=${page}/json`;
+
     try {
       console.log(`Making request to: ${url}`);
       const response = await this.fetchWithRetry(url);
@@ -56,36 +138,61 @@ export class AppStoreFetcher {
       console.log(`JSON parsed successfully`);
 
       if (!data.feed) {
-        console.warn(`No feed found in response for app ${appId}`);
+        console.warn(`No feed found in response for app ${appId} page ${page}`);
         return [];
       }
 
       if (!data.feed.entry) {
-        console.warn(`No entries found in feed for app ${appId}`);
+        console.warn(`No entries found in feed for app ${appId} page ${page}`);
         return [];
       }
 
-      console.log(`Found ${data.feed.entry.length} entries in feed`);
+      console.log(`Found ${data.feed.entry.length} entries on page ${page}`);
       const reviews = this.parseReviews(data.feed.entry, appId, country);
-      console.log(`Parsed ${reviews.length} reviews`);
-
-      // 如果是增量抓取，过滤出新评论
-      if (incremental && lastFetched) {
-        const lastFetchedDate = new Date(lastFetched);
-        const filteredReviews = reviews.filter(review => new Date(review.updated) > lastFetchedDate);
-        console.log(`Filtered to ${filteredReviews.length} new reviews since ${lastFetched}`);
-        return filteredReviews;
-      }
+      console.log(`Parsed ${reviews.length} reviews from page ${page}`);
 
       return reviews;
     } catch (error) {
-      console.error(`Failed to fetch reviews for app ${appId}:`, error);
-      if (error instanceof Error) {
-        console.error(`Error message: ${error.message}`);
-        console.error(`Error stack: ${error.stack}`);
-      }
+      console.error(`Failed to fetch page ${page} for app ${appId}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * 检查是否还有更多页面
+   */
+  private static async hasMorePages(appId: string, country: string, currentPage: number): Promise<boolean> {
+    try {
+      // 尝试获取下一页，如果返回空或错误，说明没有更多页面
+      const nextPage = currentPage + 1;
+      const url = `${this.BASE_URL}/${country}/rss/customerreviews/id=${appId}/page=${nextPage}/json`;
+
+      const response = await this.fetchWithRetry(url);
+      const data: AppStoreResponse = await response.json();
+
+      // 如果有feed和entry，说明还有更多页面
+      return !!(data.feed && data.feed.entry && data.feed.entry.length > 0);
+    } catch (error) {
+      console.log(`No more pages after page ${currentPage}`);
+      return false;
+    }
+  }
+
+  /**
+   * 去重评论（基于评论ID）
+   */
+  private static deduplicateReviews(reviews: AppStoreReview[]): AppStoreReview[] {
+    const seen = new Set<string>();
+    const uniqueReviews: AppStoreReview[] = [];
+
+    for (const review of reviews) {
+      if (!seen.has(review.id)) {
+        seen.add(review.id);
+        uniqueReviews.push(review);
+      }
+    }
+
+    return uniqueReviews;
   }
 
   /**
