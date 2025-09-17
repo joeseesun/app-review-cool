@@ -48,25 +48,42 @@ export class AppStoreFetcher {
     console.log(`Fetching reviews for app ${appId} from ${country}...`);
     
     try {
+      console.log(`Making request to: ${url}`);
       const response = await this.fetchWithRetry(url);
+      console.log(`Response received, status: ${response.status}`);
+
       const data: AppStoreResponse = await response.json();
-      
-      if (!data.feed || !data.feed.entry) {
-        console.warn(`No reviews found for app ${appId}`);
+      console.log(`JSON parsed successfully`);
+
+      if (!data.feed) {
+        console.warn(`No feed found in response for app ${appId}`);
         return [];
       }
 
+      if (!data.feed.entry) {
+        console.warn(`No entries found in feed for app ${appId}`);
+        return [];
+      }
+
+      console.log(`Found ${data.feed.entry.length} entries in feed`);
       const reviews = this.parseReviews(data.feed.entry, appId, country);
-      
+      console.log(`Parsed ${reviews.length} reviews`);
+
       // 如果是增量抓取，过滤出新评论
       if (incremental && lastFetched) {
         const lastFetchedDate = new Date(lastFetched);
-        return reviews.filter(review => new Date(review.updated) > lastFetchedDate);
+        const filteredReviews = reviews.filter(review => new Date(review.updated) > lastFetchedDate);
+        console.log(`Filtered to ${filteredReviews.length} new reviews since ${lastFetched}`);
+        return filteredReviews;
       }
-      
+
       return reviews;
     } catch (error) {
       console.error(`Failed to fetch reviews for app ${appId}:`, error);
+      if (error instanceof Error) {
+        console.error(`Error message: ${error.message}`);
+        console.error(`Error stack: ${error.stack}`);
+      }
       throw error;
     }
   }

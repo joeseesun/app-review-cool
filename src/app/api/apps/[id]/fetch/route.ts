@@ -36,8 +36,15 @@ export async function POST(
     console.log(`Starting to fetch reviews for app: ${app.name} (${app.id})`);
 
     // 抓取评论
-    const reviews = await appStoreService.fetchAppReviews(id, true);
-    
+    let reviews;
+    try {
+      reviews = await appStoreService.fetchAppReviews(id, false); // 先尝试非增量抓取
+      console.log(`Successfully fetched ${reviews.length} reviews`);
+    } catch (fetchError) {
+      console.error('Fetch error details:', fetchError);
+      throw new Error(`抓取失败: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
+    }
+
     const result: FetchResult = {
       reviewCount: reviews.length,
       message: `成功抓取 ${reviews.length} 条新评论`,
