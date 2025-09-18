@@ -99,6 +99,9 @@ export function AppCard({
             ) : (
               <>尚未抓取评论</>
             )}
+            {app.lastFetched && (
+              <> • 最后抓取: {formatRelativeTime(app.lastFetched)}</>
+            )}
             {stats?.lastAnalyzed && (
               <> • 最后分析: {formatRelativeTime(stats.lastAnalyzed)}</>
             )}
@@ -127,7 +130,8 @@ export function AppCard({
               variant="outline"
               size="sm"
               onClick={() => onAnalyze(app)}
-              disabled={isLoading.analyze || !stats?.totalReviews}
+              // 仅当明确为0条评论时才禁用；统计未就绪(undefined)时允许点击，由后端做校验
+              disabled={isLoading.analyze || (stats?.totalReviews === 0)}
               className="flex items-center gap-2"
             >
               {isLoading.analyze ? (

@@ -10,6 +10,7 @@ interface AppStats {
   ratingDistribution: Record<string, number>;
   lastAnalyzed?: string;
   analysisProgress: number;
+  lastFetched?: string;
 }
 
 // GET /api/apps/stats - 批量获取所有应用的统计信息
@@ -103,6 +104,7 @@ export async function GET(
         ratingDistribution,
         lastAnalyzed,
         analysisProgress: Math.round(analysisProgress),
+        lastFetched: app.lastFetched,
       };
     });
 

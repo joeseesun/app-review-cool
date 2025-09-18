@@ -49,6 +49,12 @@ export class LocalStorage extends BaseStorage {
     return this.filterByAppId(allReviews, appId);
   }
 
+  async getReviewsPage(appId: string, offset: number, limit: number): Promise<AppStoreReview[]> {
+    const all = await this.getReviews(appId);
+    const sorted = all.sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+    return sorted.slice(offset, offset + limit);
+  }
+
   async saveReviews(reviews: AppStoreReview[]): Promise<void> {
     const existingReviews = await this.readJsonFile<AppStoreReview[]>('reviews.json', []);
     const mergedReviews = this.mergeArrays(existingReviews, reviews);
@@ -73,29 +79,31 @@ export class LocalStorage extends BaseStorage {
       {
         id: 'default',
         name: '默认分析模板',
-        description: '通用的应用评论分析模板',
-        content: `请分析以下用户评论，提取关键信息：
+        description: '严格JSON输出，短语化、去噪、可聚合',
+        content: `你是一名资深产品分析师。请阅读一条应用商店评论，只输出严格 JSON，不输出任何其他文字或代码块标记，且所有短语与内容一律使用中文。
 
-评论标题：{title}
-评论内容：{content}
-评分：{rating}
-版本：{version}
-用户：{authorName}
-时间：{updated}
+输入：
+title: {title}
+content: {content}
+rating: {rating}
+version: {version}
+author: {authorName}
+updated: {updated}
 
-分析要求：
-1. 判断情感倾向：positive（正面）、negative（负面）、neutral（中性）
-2. 识别主要问题：提取用户反馈的具体问题和bug
-3. 提取改进建议：用户提出的功能建议和改进意见
-4. 版本相关信息：如果评论提到特定版本的问题
-
-请严格按照以下JSON格式返回结果，不要添加任何其他文字：
+请输出：
 {
   "sentiment": "positive|negative|neutral",
-  "issues": ["问题1", "问题2"],
-  "suggestions": ["建议1", "建议2"],
-  "versionRefs": ["版本号1", "版本号2"]
-}`,
+  "issues": ["中文短语，≤16字"],
+  "suggestions": ["仅当评论中明确提出希望/建议/需要/增加/修复等，才给出中文短语，≤16字"],
+  "versionRefs": ["如 1.2.3 或 iOS 17"]
+}
+
+规则：
+- 只返回 JSON；
+- 去除口水词、表情，如“amazing/棒棒/👍🏻”；不要把赞美当建议；不得输出英文短语；
+- 短语必须可行动（actionable），避免含糊；
+- issues/suggestions 为空数组是允许的；
+- versionRefs 仅在文本出现版本/系统信息时给出。`,
         version: '1.0.0',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

@@ -4,10 +4,17 @@ import { AppStoreReview, AnalysisResult, AnalysisConfig, AggregatedAnalysis } fr
 
 export class AnalysisService {
   private storage = getStorage();
-  private kimiClient: KimiClient;
+  private kimiClient: KimiClient | null = null; // Lazy init to avoid env errors on routes that don't need Kimi
 
   constructor() {
-    this.kimiClient = new KimiClient();
+    // defer Kimi client creation until actually needed
+  }
+
+  private getKimi(): KimiClient {
+    if (!this.kimiClient) {
+      this.kimiClient = new KimiClient();
+    }
+    return this.kimiClient;
   }
 
   /**
@@ -97,7 +104,7 @@ export class AnalysisService {
     if (analysisRequests.length > 100) {
       // 大规模分析：使用并发批处理
       console.log(`Using massive analysis for ${analysisRequests.length} reviews`);
-      analysisResponses = await this.kimiClient.analyzeReviewsMassive(
+      analysisResponses = await this.getKimi().analyzeReviewsMassive(
         analysisRequests,
         promptTemplate,
         {
@@ -111,7 +118,7 @@ export class AnalysisService {
     } else {
       // 小规模分析：使用标准批处理
       console.log(`Using standard batch analysis for ${analysisRequests.length} reviews`);
-      analysisResponses = await this.kimiClient.analyzeReviewsBatchOptimized(
+      analysisResponses = await this.getKimi().analyzeReviewsBatchOptimized(
         analysisRequests,
         promptTemplate,
         6000 // 增加批次大小
@@ -134,6 +141,103 @@ export class AnalysisService {
     await this.storage.saveAnalysisResults(analysisResults);
 
     return analysisResults;
+  }
+
+  /**
+   * 分页分析：对指定 app 的一页评论执行 AI 分析，仅分析未分析的评论
+   */
+  async analyzeAppReviewsPage(appId: string, offset: number, limit: number): Promise<AnalysisResult[]> {
+    // 获取该页评论
+    const pageReviews = await this.storage.getReviewsPage(appId, offset, limit);
+    if (pageReviews.length === 0) return [];
+
+    // 过滤掉已分析
+    const existing = await this.storage.getAnalysisResults(appId);
+    const analyzedIds = new Set(existing.map(a => a.reviewId));
+    const toAnalyze = pageReviews.filter(r => !analyzedIds.has(r.id));
+    if (toAnalyze.length === 0) return [];
+
+    // 模板
+    const promptTemplates = await this.storage.getPromptTemplates();
+    const tpl = promptTemplates.find(t => t.id === 'default');
+    if (!tpl) throw new Error('Prompt template default not found');
+
+    // 最多按 50 条一批（由 KimiClient 决定真实批量）
+    const requests = toAnalyze.map(r => ({
+      title: r.title, content: r.content, rating: r.rating, version: r.version, authorName: r.authorName, updated: r.updated,
+    }));
+
+    const responses = await this.getKimi().analyzeReviewsBatchOptimized(requests, tpl, 4000);
+
+    const results: AnalysisResult[] = toAnalyze.map((review, i) => ({
+      id: `analysis_${review.id}_${Date.now()}`,
+      reviewId: review.id,
+      appId,
+      sentiment: responses[i]?.sentiment || 'neutral',
+      issues: (responses[i]?.issues || []).map(s => this.normalizePhrase(s)).filter(Boolean) as string[],
+      suggestions: (responses[i]?.suggestions || []).map(s => this.normalizeSuggestion(s)).filter(Boolean) as string[],
+      versionRefs: (responses[i]?.versionRefs || []).map(s => this.normalizeVersionRef(s)).filter(Boolean) as string[],
+      analyzedAt: new Date().toISOString(),
+    }));
+
+    await this.storage.saveAnalysisResults(results);
+    return results;
+  }
+
+  /**
+   * 清理噪声条目（移除 "检测到关键词:"、"分析失败" 之类的占位项），保留其他结构
+   */
+  async cleanupNoisyAnalysis(appId: string): Promise<{ cleaned: number }> {
+    const results = await this.storage.getAnalysisResults(appId);
+    let cleaned = 0;
+    const filtered = results.map(r => {
+      const beforeI = r.issues.length;
+      const beforeS = r.suggestions.length;
+      const issues = r.issues.filter(x => x && !/^检测到关键词/.test(x) && x !== '分析失败');
+      const suggestions = r.suggestions.filter(x => x && !/^检测到关键词/.test(x) && x !== '分析失败');
+      if (issues.length !== beforeI || suggestions.length !== beforeS) cleaned++;
+      return { ...r, issues, suggestions } as AnalysisResult;
+    });
+    if (cleaned > 0) await this.storage.saveAnalysisResults(filtered);
+    return { cleaned };
+  }
+
+  /** 标准化建议短语：去噪、裁剪、同义归一 */
+  private normalizeSuggestion(s: string): string | null {
+    if (!s && s !== 0 as any) return null;
+    let t = this.normalizePhrase(s as any);
+    if (!t) return null;
+    // 停用词/口水词
+    const stop = ['建议', '优化', '改进', '希望', '希望可以', '请', '谢谢', 'Amazing', 'Great', 'Nice'];
+    if (stop.includes(t)) return null;
+    // 同义归一
+    const map: Record<string, string> = {
+      '增加': '新增', '添加': '新增', '希望增加': '新增',
+      '修复bug': '修复问题', '修复 BUG': '修复问题',
+    };
+    t = map[t] || t;
+    return t;
+  }
+
+  /** 标准化通用短语：去表情/空白、限制长度、中文化引号 */
+  private normalizePhrase(s: any): string | null {
+    // 强制转字符串，避免 (s || '').replace 报错
+    let t = String(s ?? '')
+      .replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu, '')
+      .trim();
+    t = t.replace(/[“”]/g, '"').replace(/[’]/g, "'");
+    if (!t) return null;
+    if (t.length > 16) t = t.slice(0, 16);
+    return t;
+  }
+
+  private normalizeVersionRef(s: any): string | null {
+    let t = String(s ?? '').trim();
+    if (!t) return null;
+    // 只保留形如 1.2.3 或 iOS 17 等
+    if (/^\d+(\.\d+){0,2}$/.test(t)) return t;
+    if (/^(iOS|Android)\s*\d+/.test(t)) return t;
+    return null;
   }
 
   /**
@@ -277,7 +381,7 @@ export class AnalysisService {
     // 问题统计
     const issueCount = new Map<string, { count: number; examples: string[] }>();
     
-    // 建议统计
+    // 建议统计（对噪声进行归一与过滤）
     const suggestionCount = new Map<string, { count: number; examples: string[] }>();
 
     // 版本分析
@@ -303,20 +407,20 @@ export class AnalysisService {
           const issueData = issueCount.get(issue)!;
           issueData.count++;
           if (issueData.examples.length < 3) {
-            issueData.examples.push(review.title);
+            issueData.examples.push(this.pickEvidence(issue, review));
           }
         });
 
-        // 统计建议
-        analysis.suggestions.forEach(suggestion => {
-          if (!suggestionCount.has(suggestion)) {
-            suggestionCount.set(suggestion, { count: 0, examples: [] });
+        // 统计建议（过滤短语/口水词/表情/无意义词）
+        analysis.suggestions.forEach(raw => {
+          const norm = this.normalizeSuggestion(raw);
+          if (!norm) return;
+          if (!suggestionCount.has(norm)) {
+            suggestionCount.set(norm, { count: 0, examples: [] });
           }
-          const suggestionData = suggestionCount.get(suggestion)!;
-          suggestionData.count++;
-          if (suggestionData.examples.length < 3) {
-            suggestionData.examples.push(review.title);
-          }
+          const s = suggestionCount.get(norm)!;
+          s.count++;
+          if (s.examples.length < 3) s.examples.push(this.pickEvidence(norm, review));
         });
       }
 
@@ -359,8 +463,8 @@ export class AnalysisService {
       commonIssues: rawIssues.slice(0, 10), // 保留原始问题列表用于兼容性
       clusteredIssues, // 新增聚类问题
       suggestions: Array.from(suggestionCount.entries())
-        .map(([suggestion, data]) => ({
-          suggestion,
+        .map(([norm, data]) => ({
+          suggestion: norm,
           count: data.count,
           examples: data.examples,
         }))
@@ -378,6 +482,29 @@ export class AnalysisService {
     };
 
     return aggregatedAnalysis;
+  }
+
+  // 选取与短语最相关的证据句（从标题/内容中挑一句）
+  private pickEvidence(phrase: string, review: { title: string; content: string }): string {
+    const text = `${review.title}\n${review.content}`;
+    const parts = text
+      .split(/(?<=[。！？.!?\n])/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    const key = phrase.replace(/\s+/g, '').toLowerCase();
+    let best: { s: string; score: number } = { s: review.title || parts[0] || '', score: -1 };
+    for (const s of parts) {
+      const plain = s.replace(/\s+/g, '').toLowerCase();
+      let score = 0;
+      if (plain.includes(key)) score += 5; // 直接包含短语
+      // 若短语为多个词，分词包含也加分
+      const toks = phrase.split(/\s+|，|。|,|·/).filter(Boolean);
+      score += toks.reduce((acc, t) => acc + (plain.includes(t.toLowerCase()) ? 1 : 0), 0);
+      // 长度惩罚（更短更精炼）
+      score += Math.max(0, 3 - Math.floor(s.length / 40));
+      if (score > best.score) best = { s, score };
+    }
+    return best.s || review.title || '';
   }
 
   /**

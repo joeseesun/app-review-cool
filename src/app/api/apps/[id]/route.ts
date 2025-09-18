@@ -7,10 +7,10 @@ const storage = getStorage();
 // GET /api/apps/[id] - 获取单个应用
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResponse<App>>> {
   try {
-    const { id } = params;
+    const { id } = await params;
     const apps = await storage.getApps();
     const app = apps.find(a => a.id === id);
 
@@ -44,10 +44,10 @@ export async function GET(
 // PUT /api/apps/[id] - 更新应用
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResponse<App>>> {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { name, country } = body;
 
@@ -116,10 +116,10 @@ export async function PUT(
 // DELETE /api/apps/[id] - 删除应用
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResponse<null>>> {
   try {
-    const { id } = params;
+    const { id } = await params;
     const apps = await storage.getApps();
     const appIndex = apps.findIndex(a => a.id === id);
 

@@ -4,6 +4,8 @@ import { App, AppStoreReview, AnalysisResult, PromptTemplate } from '@/types';
 // Supabase 存储实现
 export class SupabaseStorage extends BaseStorage {
   private supabase: any;
+  // Cache detected schema features to gracefully handle older DBs
+  private schemaFeatures: { analysisHasAppId?: boolean; analysisHasVersionRefs?: boolean } = {};
 
   constructor() {
     super();
@@ -30,6 +32,36 @@ export class SupabaseStorage extends BaseStorage {
   private async ensureSupabase() {
     if (!this.supabase) {
       await this.initSupabase();
+    }
+  }
+
+  // Detect presence of columns on first use to stay compatible with older DBs
+  private async detectAnalysisSchema(): Promise<void> {
+    if (this.schemaFeatures.analysisHasAppId !== undefined && this.schemaFeatures.analysisHasVersionRefs !== undefined) {
+      return;
+    }
+
+    try {
+      // Try selecting specific columns; PostgREST will error with 42703 if column doesn't exist
+      const { error } = await this.supabase
+        .from('analysis_results')
+        .select('app_id, version_refs')
+        .limit(1);
+
+      if (error) {
+        const msg = (error as any)?.message || String(error);
+        const hasAppId = !msg.includes('app_id does not exist');
+        const hasVersionRefs = !msg.includes('version_refs does not exist');
+        this.schemaFeatures.analysisHasAppId = hasAppId;
+        this.schemaFeatures.analysisHasVersionRefs = hasVersionRefs;
+      } else {
+        this.schemaFeatures.analysisHasAppId = true;
+        this.schemaFeatures.analysisHasVersionRefs = true;
+      }
+    } catch (e) {
+      // Fallback: assume legacy schema
+      this.schemaFeatures.analysisHasAppId = false;
+      this.schemaFeatures.analysisHasVersionRefs = false;
     }
   }
 
@@ -68,13 +100,28 @@ export class SupabaseStorage extends BaseStorage {
       return mappedApp;
     });
 
-    // 删除现有数据
-    await this.supabase.from('apps').delete().neq('id', '');
+    // 读取现有应用 ID，用于计算需要删除的条目
+    const { data: existingRows, error: existingError } = await this.supabase
+      .from('apps')
+      .select('id');
+    if (existingError) throw existingError;
 
-    // 插入新数据
+    const existingIds = new Set((existingRows || []).map((r: any) => r.id));
+    const newIds = new Set(apps.map(a => a.id));
+
+    // 仅删除不在新列表中的应用，避免误删导致级联删除评论/分析结果
+    const toDelete: string[] = Array.from(existingIds).filter(id => !newIds.has(id));
+    if (toDelete.length > 0) {
+      const { error: delError } = await this.supabase.from('apps').delete().in('id', toDelete);
+      if (delError) throw delError;
+    }
+
+    // 对存在/新增的应用执行 upsert，避免全表删除带来的级联影响
     if (mappedApps.length > 0) {
-      const { error } = await this.supabase.from('apps').insert(mappedApps);
-      if (error) throw error;
+      const { error: upsertError } = await this.supabase
+        .from('apps')
+        .upsert(mappedApps, { onConflict: 'id' });
+      if (upsertError) throw upsertError;
     }
   }
 
@@ -132,6 +179,32 @@ export class SupabaseStorage extends BaseStorage {
     });
   }
 
+  async getReviewsPage(appId: string, offset: number, limit: number): Promise<AppStoreReview[]> {
+    await this.ensureSupabase();
+    const { data, error } = await this.supabase
+      .from('reviews')
+      .select('*')
+      .eq('app_id', appId)
+      .order('updated', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) throw error;
+    return (data || []).map(review => {
+      const { app_id, author, ...rest } = review;
+      return {
+        ...rest,
+        appId: app_id,
+        authorName: author,
+        contentType: 'text',
+        authorUri: '',
+        voteCount: '0',
+        voteSum: '0',
+        link: '',
+        contentTypeLabel: '',
+        country: 'us',
+      };
+    });
+  }
+
   async saveReviews(reviews: AppStoreReview[]): Promise<void> {
     await this.ensureSupabase();
 
@@ -169,47 +242,91 @@ export class SupabaseStorage extends BaseStorage {
 
   async getAnalysisResults(appId?: string): Promise<AnalysisResult[]> {
     await this.ensureSupabase();
+    await this.detectAnalysisSchema();
 
-    let query = this.supabase
-      .from('analysis_results')
-      .select('*')
-      .order('analyzed_at', { ascending: false });
+    let data: any[] | null = null;
+    let error: any = null;
 
-    if (appId) {
-      query = query.eq('app_id', appId);
+    try {
+      if (appId && this.schemaFeatures.analysisHasAppId) {
+        const res = await this.supabase
+          .from('analysis_results')
+          .select('*')
+          .eq('app_id', appId)
+          .order('analyzed_at', { ascending: false });
+        data = res.data; error = res.error;
+      } else if (appId && !this.schemaFeatures.analysisHasAppId) {
+        // Legacy schema: filter by review_id belonging to this app
+        const { data: reviewRows, error: reviewErr } = await this.supabase
+          .from('reviews')
+          .select('id')
+          .eq('app_id', appId);
+        if (reviewErr) throw reviewErr;
+        const reviewIds = (reviewRows || []).map((r: any) => r.id);
+        if (reviewIds.length === 0) {
+          data = [];
+        } else {
+          // Supabase in() has a limit on URL length; chunk if needed
+          const chunkSize = 1000;
+          const chunks: string[][] = [];
+          for (let i = 0; i < reviewIds.length; i += chunkSize) {
+            chunks.push(reviewIds.slice(i, i + chunkSize));
+          }
+          const all: any[] = [];
+          for (const ids of chunks) {
+            const res = await this.supabase
+              .from('analysis_results')
+              .select('*')
+              .in('review_id', ids)
+              .order('analyzed_at', { ascending: false });
+            if (res.error) throw res.error;
+            all.push(...(res.data || []));
+          }
+          data = all;
+        }
+      } else {
+        const res = await this.supabase
+          .from('analysis_results')
+          .select('*')
+          .order('analyzed_at', { ascending: false });
+        data = res.data; error = res.error;
+      }
+    } catch (e) {
+      error = e;
     }
 
-    const { data, error } = await query;
     if (error) throw error;
 
     // 将数据库字段映射为 TypeScript 类型字段
     return (data || []).map(result => {
-      const { review_id, app_id, analyzed_at, version_refs, ...rest } = result;
+      const { review_id, app_id, analyzed_at, version_refs, ...rest } = result as any;
       return {
         ...rest,
         reviewId: review_id,
-        appId: app_id,
+        appId: app_id, // may be undefined on legacy schema
         analyzedAt: analyzed_at,
-        versionRefs: version_refs || [],
+        versionRefs: (this.schemaFeatures.analysisHasVersionRefs ? (version_refs || []) : []),
       };
     });
   }
 
   async saveAnalysisResults(results: AnalysisResult[]): Promise<void> {
     await this.ensureSupabase();
+    await this.detectAnalysisSchema();
 
     if (results.length === 0) return;
 
     // 将 TypeScript 字段映射为数据库字段
     const mappedResults = results.map(result => {
-      const { reviewId, appId, analyzedAt, versionRefs, ...rest } = result;
-      return {
+      const { reviewId, appId, analyzedAt, versionRefs, ...rest } = result as any;
+      const row: any = {
         ...rest,
         review_id: reviewId,
-        app_id: appId,  // 保留 appId 字段映射
         analyzed_at: analyzedAt,
-        version_refs: versionRefs || [],  // 处理 versionRefs 字段
       };
+      if (this.schemaFeatures.analysisHasAppId) row.app_id = appId;
+      if (this.schemaFeatures.analysisHasVersionRefs) row.version_refs = versionRefs || [];
+      return row;
     });
 
     const { error } = await this.supabase
@@ -234,22 +351,31 @@ export class SupabaseStorage extends BaseStorage {
       const defaultTemplate: PromptTemplate = {
         id: 'default',
         name: '默认分析模板',
-        description: '通用的应用评论分析模板',
-        systemPrompt: `你是一个专业的应用评论分析师。请分析用户评论，提取关键信息。`,
-        userPromptTemplate: `请分析以下应用评论：
+        description: '严格JSON输出，短语化、去噪、可聚合',
+        content: `你是一名资深产品分析师。请阅读一条应用商店评论，只输出严格 JSON，不输出任何其他文字或代码块标记，且所有短语与内容一律使用中文。
 
-标题：{title}
-内容：{content}
-评分：{rating}星
-版本：{version}
+输入：
+title: {title}
+content: {content}
+rating: {rating}
+version: {version}
+author: {authorName}
+updated: {updated}
 
-请以JSON格式返回分析结果：
+请输出：
 {
   "sentiment": "positive|negative|neutral",
-  "issues": ["问题1", "问题2"],
-  "suggestions": ["建议1", "建议2"],
-  "versionRefs": ["版本相关信息"]
-}`,
+  "issues": ["中文短语，≤16字"],
+  "suggestions": ["仅当评论中明确提出希望/建议/需要/增加/修复等，才给出中文短语，≤16字"],
+  "versionRefs": ["如 1.2.3 或 iOS 17"]
+}
+
+规则：
+- 只返回 JSON；
+- 去除口水词、表情，如“amazing/棒棒/👍🏻”；不要把赞美当建议；不得输出英文短语；
+- 短语必须可行动（actionable），避免含糊；
+- issues/suggestions 为空数组是允许的；
+- versionRefs 仅在文本出现版本/系统信息时给出。`,
         version: '1.0.0',
         createdAt: new Date().toISOString(),
         isActive: true

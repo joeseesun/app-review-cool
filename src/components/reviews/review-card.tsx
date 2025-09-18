@@ -16,11 +16,22 @@ interface ReviewCardProps {
   review: AppStoreReview;
   analysis?: AnalysisResult;
   showAnalysis?: boolean;
+  highlight?: boolean;
 }
 
-export function ReviewCard({ review, analysis, showAnalysis = true }: ReviewCardProps) {
+export function ReviewCard({ review, analysis, showAnalysis = true, highlight = false }: ReviewCardProps) {
+  // 尝试从 sessionStorage 读取翻译，避免重复请求
+  let translation: { titleZh?: string; contentZh?: string } | null = null;
+  if (typeof window !== 'undefined') {
+    const cached = sessionStorage.getItem(`rev_tr_${review.id}`);
+    if (cached) {
+      try { translation = JSON.parse(cached); } catch {}
+    }
+  }
+
+  const isNonCN = (review.country || '').toLowerCase() !== 'cn';
   return (
-    <Card className="w-full">
+    <Card className={`w-full ${highlight ? 'ring-2 ring-blue-400' : ''}`} data-review-id={review.id}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -38,7 +49,12 @@ export function ReviewCard({ review, analysis, showAnalysis = true }: ReviewCard
                 </Badge>
               )}
             </div>
-            <h3 className="font-semibold text-lg mb-1">{review.title}</h3>
+            <h3 className="font-semibold text-lg mb-1">
+              {review.title}
+              {isNonCN && translation?.titleZh && (
+                <div className="text-sm text-gray-600 mt-1">{translation.titleZh}</div>
+              )}
+            </h3>
             <div className="flex items-center gap-4 text-sm text-gray-500 mb-2">
               <div className="flex items-center gap-1">
                 <User className="h-3 w-3" />
@@ -66,6 +82,9 @@ export function ReviewCard({ review, analysis, showAnalysis = true }: ReviewCard
         {/* 评论内容 */}
         <div className="text-gray-700">
           <p className="whitespace-pre-wrap">{review.content}</p>
+          {isNonCN && translation?.contentZh && (
+            <p className="whitespace-pre-wrap mt-2 text-gray-700 bg-gray-50 p-3 rounded">{translation.contentZh}</p>
+          )}
         </div>
 
         {/* 投票信息 */}

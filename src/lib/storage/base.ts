@@ -4,6 +4,7 @@ export abstract class BaseStorage implements DataStorage {
   abstract getApps(): Promise<App[]>;
   abstract saveApps(apps: App[]): Promise<void>;
   abstract getReviews(appId?: string): Promise<AppStoreReview[]>;
+  abstract getReviewsPage(appId: string, offset: number, limit: number): Promise<AppStoreReview[]>;
   abstract saveReviews(reviews: AppStoreReview[]): Promise<void>;
   abstract getAnalysisResults(appId?: string): Promise<AnalysisResult[]>;
   abstract saveAnalysisResults(results: AnalysisResult[]): Promise<void>;

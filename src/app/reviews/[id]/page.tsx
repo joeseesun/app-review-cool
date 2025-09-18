@@ -17,12 +17,15 @@ export default function ReviewsPage() {
   const [reviews, setReviews] = useState<AppStoreReview[]>([]);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [pagination, setPagination] = useState<{ page: number; limit: number; total: number; totalPages: number } | null>(null);
 
   useEffect(() => {
     if (appId) {
       loadData();
     }
-  }, [appId]);
+  }, [appId, page, limit]);
 
   const loadData = async () => {
     try {
@@ -31,7 +34,7 @@ export default function ReviewsPage() {
       // 并行加载应用信息和评论数据
       const [appResponse, reviewsResponse] = await Promise.all([
         fetch(`/api/apps/${appId}`),
-        fetch(`/api/apps/${appId}/reviews?limit=1000`), // 加载更多评论用于前端过滤
+        fetch(`/api/apps/${appId}/reviews?page=${page}&limit=${limit}`),
       ]);
 
       if (appResponse.ok) {
@@ -43,6 +46,7 @@ export default function ReviewsPage() {
         const reviewsData = await reviewsResponse.json();
         setReviews(reviewsData.data.reviews);
         setAnalysisResults(reviewsData.data.analysisResults);
+        setPagination(reviewsData.data.pagination);
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -142,7 +146,8 @@ export default function ReviewsPage() {
                   {app.name} 评论列表
                 </h1>
                 <p className="text-gray-600 mt-1">
-                  应用ID: {app.id} • 共 {reviews.length} 条评论
+                  应用ID: {app.id}
+                  {pagination ? ` • 第 ${pagination.page}/${pagination.totalPages} 页 • 每页 ${pagination.limit} 条 • 共 ${pagination.total} 条` : ` • 共 ${reviews.length} 条`}
                   {analysisResults.length > 0 && ` • ${analysisResults.length} 条已分析`}
                 </p>
               </div>
@@ -186,10 +191,11 @@ export default function ReviewsPage() {
             </Button>
           </div>
         ) : (
-          <ReviewList 
-            reviews={reviews} 
+          <ReviewList
+            reviews={reviews}
             analysisResults={analysisResults}
             showAnalysis={analysisResults.length > 0}
+            serverPagination={pagination ? { ...pagination, onPageChange: setPage } : undefined}
           />
         )}
       </div>

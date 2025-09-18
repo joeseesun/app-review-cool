@@ -16,6 +16,7 @@ interface ReviewsResponse {
 }
 
 // GET /api/apps/[id]/reviews - 获取应用的评论列表
+// Note: `params` is provided synchronously by Next.js route handlers
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

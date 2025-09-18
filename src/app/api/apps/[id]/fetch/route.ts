@@ -38,7 +38,9 @@ export async function POST(
     // 抓取评论
     let reviews;
     try {
-      reviews = await appStoreService.fetchAppReviews(id, false); // 先尝试非增量抓取
+      // 使用增量抓取：首次抓取时因为没有 lastFetched，会自动退化为全量抓取；
+      // 之后会根据 apps.lastFetched 进行增量。
+      reviews = await appStoreService.fetchAppReviews(id, true);
       console.log(`Successfully fetched ${reviews.length} reviews`);
     } catch (fetchError) {
       console.error('Fetch error details:', fetchError);

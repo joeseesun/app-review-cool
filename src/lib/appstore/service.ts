@@ -28,13 +28,20 @@ export class AppStoreService {
     }
 
     const reviews = await AppStoreFetcher.fetchReviews(config);
-    
+
     if (reviews.length > 0) {
       // 保存评论数据
       await this.storage.saveReviews(reviews);
       
-      // 更新应用的最后抓取时间
-      await this.updateAppLastFetched(appId);
+      // 更新应用的最后抓取时间为这次抓取到的评论中最新的时间，避免跳过后续新评论
+      const latestUpdated = reviews
+        .map(r => new Date(r.updated))
+        .filter(d => !isNaN(d.getTime()))
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+
+      if (latestUpdated) {
+        await this.updateAppLastFetched(appId, latestUpdated.toISOString());
+      }
     }
 
     return reviews;
@@ -157,19 +164,15 @@ export class AppStoreService {
   /**
    * 更新应用的最后抓取时间
    */
-  private async updateAppLastFetched(appId: string): Promise<void> {
-    // 暂时禁用 lastFetched 字段更新，因为 Supabase 数据库中还没有这个字段
-    // TODO: 在数据库中添加 last_fetched 字段后重新启用
-    console.log(`Would update lastFetched for app ${appId} to ${new Date().toISOString()}`);
+  private async updateAppLastFetched(appId: string, lastFetchedAt: string): Promise<void> {
+    const apps = await this.storage.getApps();
+    const updatedApps = apps.map(app =>
+      app.id === appId
+        ? { ...app, lastFetched: lastFetchedAt }
+        : app
+    );
 
-    // const apps = await this.storage.getApps();
-    // const updatedApps = apps.map(app =>
-    //   app.id === appId
-    //     ? { ...app, lastFetched: new Date().toISOString() }
-    //     : app
-    // );
-    //
-    // await this.storage.saveApps(updatedApps);
+    await this.storage.saveApps(updatedApps);
   }
 
   /**

@@ -55,6 +55,30 @@ CREATE INDEX IF NOT EXISTS idx_reviews_updated ON reviews(updated DESC);
 CREATE INDEX IF NOT EXISTS idx_analysis_results_review_id ON analysis_results(review_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_results_analyzed_at ON analysis_results(analyzed_at DESC);
 
+-- 5. 评论翻译表（存储双语对照的中文翻译）
+CREATE TABLE IF NOT EXISTS review_translations (
+  review_id TEXT PRIMARY KEY REFERENCES reviews(id) ON DELETE CASCADE,
+  title_zh TEXT,
+  content_zh TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_translations_updated ON review_translations(updated_at DESC);
+
+-- 6. AI 聚合洞察缓存表（可选）
+CREATE TABLE IF NOT EXISTS ai_insights (
+  app_id TEXT NOT NULL,
+  kind TEXT NOT NULL, -- 'themes_positive', 'themes_negative', 'trends'
+  payload JSONB NOT NULL,
+  coverage INTEGER,
+  model TEXT,
+  source TEXT,
+  generated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY(app_id, kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_insights_generated ON ai_insights(generated_at DESC);
+
 -- 创建更新时间触发器
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

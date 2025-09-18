@@ -31,3 +31,13 @@ CREATE INDEX IF NOT EXISTS idx_apps_last_fetched ON apps(last_fetched);
 CREATE INDEX IF NOT EXISTS idx_analysis_results_analyzed_at ON analysis_results(analyzed_at);
 CREATE INDEX IF NOT EXISTS idx_analysis_results_app_id ON analysis_results(app_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_results_review_id ON analysis_results(review_id);
+
+-- 创建评论翻译表（如果不存在）
+CREATE TABLE IF NOT EXISTS review_translations (
+  review_id TEXT PRIMARY KEY REFERENCES reviews(id) ON DELETE CASCADE,
+  title_zh TEXT,
+  content_zh TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_translations_updated ON review_translations(updated_at);

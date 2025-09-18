@@ -17,6 +17,15 @@ export interface AnalysisResponse {
   versionRefs: string[];
 }
 
+export interface ThemeItem {
+  title: string; // 中文短标题（≤16字）
+  summary: string; // 2-3句中文解读
+  examples: Array<{ id: string; snippet: string }>; // 证据句，来自原评论
+}
+
+export interface IssueItem { title: string; summary: string; category: string; examples: Array<{ id: string; snippet: string }>; }
+export interface SuggestionItem { title: string; summary: string; examples: Array<{ id: string; snippet: string }>; }
+
 export class KimiClient {
   private client: OpenAI;
   private model: string;
@@ -63,8 +72,11 @@ export class KimiClient {
             content: formattedPrompt,
           },
         ],
-        temperature: 0.6,
+        // 降低随机性，强调结构化输出
+        temperature: 0.2,
         max_tokens: 1000,
+        // 强制 JSON 模式（若后端不支持会忽略）
+        response_format: { type: 'json_object' } as any,
       });
 
       const responseContent = completion.choices[0]?.message?.content;
@@ -330,9 +342,18 @@ export class KimiClient {
         versionRefs: Array.isArray(parsed.versionRefs) ? parsed.versionRefs : [],
       };
     } catch (error) {
-      // 如果JSON解析失败，尝试从文本中提取信息
-      console.warn('Failed to parse JSON response, attempting text extraction:', error);
-      return this.extractFromText(responseContent);
+      // 回退：尝试从代码块/花括号中恢复 JSON
+      const recovered = this.tryRecoverJson(responseContent);
+      if (recovered) {
+        return {
+          sentiment: this.normalizeSentiment(recovered.sentiment),
+          issues: Array.isArray(recovered.issues) ? recovered.issues : [],
+          suggestions: Array.isArray(recovered.suggestions) ? recovered.suggestions : [],
+          versionRefs: Array.isArray(recovered.versionRefs) ? recovered.versionRefs : [],
+        };
+      }
+      console.warn('Failed to parse JSON response; returning empty analysis');
+      return this.getDefaultAnalysisResponse();
     }
   }
 
@@ -354,23 +375,31 @@ export class KimiClient {
       result.sentiment = 'negative';
     }
 
-    // 提取问题（简单的关键词匹配）
-    const issueKeywords = ['问题', '错误', 'bug', '故障', '崩溃', '卡顿', '慢'];
-    issueKeywords.forEach(keyword => {
-      if (text.toLowerCase().includes(keyword.toLowerCase())) {
-        result.issues.push(`检测到关键词: ${keyword}`);
-      }
-    });
-
-    // 提取建议（简单的关键词匹配）
-    const suggestionKeywords = ['建议', '希望', '改进', '优化', '增加', '添加'];
-    suggestionKeywords.forEach(keyword => {
-      if (text.toLowerCase().includes(keyword.toLowerCase())) {
-        result.suggestions.push(`检测到关键词: ${keyword}`);
-      }
-    });
+    // 为避免噪声，回退模式不再硬塞“检测到关键词”，保持 issues/suggestions 为空
 
     return result;
+  }
+
+  // 从回复文本中尽量恢复 JSON
+  private tryRecoverJson(text: string): any | null {
+    try {
+      const code = text.match(/```(?:json)?\n([\s\S]*?)\n```/i);
+      if (code && code[1]) {
+        return JSON.parse(this.relaxJson(code[1]));
+      }
+      const brace = text.match(/\{[\s\S]*\}/);
+      if (brace) {
+        return JSON.parse(this.relaxJson(brace[0]));
+      }
+    } catch {}
+    return null;
+  }
+
+  private relaxJson(s: string): string {
+    let t = s.trim();
+    t = t.replace(/,\s*([}\]])/g, '$1');
+    t = t.replace(/[“”]/g, '"');
+    return t;
   }
 
   /**
@@ -396,7 +425,7 @@ export class KimiClient {
   private getDefaultAnalysisResponse(): AnalysisResponse {
     return {
       sentiment: 'neutral',
-      issues: ['分析失败'],
+      issues: [],
       suggestions: [],
       versionRefs: [],
     };
@@ -441,5 +470,90 @@ export class KimiClient {
       available,
       lastTest: new Date(),
     };
+  }
+
+  /**
+   * 从一批评论中提取主题（好评/差评）— Map 阶段
+   */
+  async summarizeThemesMap(
+    items: Array<{ id: string; title: string; content: string; rating?: string }>,
+    polarity: 'positive' | 'negative',
+    limit: number = 5
+  ): Promise<ThemeItem[]> {
+    const prompt = `你是一名资深产品分析师。请阅读一批用户评论（标题+内容），只输出严格 JSON，不要输出任何其他文字或代码块。\n` +
+    `任务：提取${polarity === 'positive' ? '好评核心亮点' : '差评核心问题'}主题，给出中文短标题（≤16字）与2-3句中文解读，并提供来自原文的一条证据句（含评论id）。\n` +
+    `严格要求：\n- 所有输出中文；\n- 不要使用“建议/问题/优化/改进”等口水词做标题；\n- 标题必须具备可理解的产品含义；\n- 证据句必须取自提供的原文内容或标题；\n- 最多返回${limit}个主题。\n\n` +
+    `输入示例（多条）：[{"id":"r1","title":"...","content":"..."}, ...]\n` +
+    `现在的输入：${JSON.stringify(items).slice(0, 12000)}\n\n` +
+    `输出JSON：{ "themes": [ { "title":"中文短标题", "summary":"2-3句中文解读", "examples":[{"id":"评论id","snippet":"证据句"}] } ] }`;
+
+    const completion = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [
+        { role: 'system', content: '你是严谨的中文产品分析师，只返回严格 JSON。' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.2,
+      max_tokens: 1200,
+      response_format: { type: 'json_object' } as any,
+    });
+
+    const content = completion.choices?.[0]?.message?.content || '';
+    try {
+      const parsed = JSON.parse(content);
+      const arr = Array.isArray(parsed.themes) ? parsed.themes : [];
+      return arr.map((t: any) => ({
+        title: String(t.title || '').slice(0, 30),
+        summary: String(t.summary || '').slice(0, 500),
+        examples: Array.isArray(t.examples) ? t.examples.filter((e: any) => e && e.id && e.snippet).map((e: any) => ({ id: String(e.id), snippet: String(e.snippet).slice(0, 200) })) : [],
+      })).filter((t: ThemeItem) => t.title && t.summary);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 从一批评论中提取“问题分类分析 + 改进建议” — Map 阶段
+   */
+  async summarizeIssuesSuggestionsMap(
+    items: Array<{ id: string; title: string; content: string; rating?: string }>,
+    limit: number = 10
+  ): Promise<{ issues: IssueItem[]; suggestions: SuggestionItem[] }> {
+    const prompt = `你是一名资深产品分析师。请阅读一批用户评论（标题+内容），只返回严格 JSON。\n` +
+    `任务：\n- 提取“问题分类分析”：用中文短标题（≤16字）+ 1-2句中文解读，按类别归属（性能/功能/体验/内容/账户/价格/其他），并提供来自原文的一条证据句（含评论id）。\n` +
+    `- 提取“改进建议”：仅当评论明确提出“希望/需要/增加/修复”等，给出中文短标题（≤16字）+ 1-2句中文解读，并提供证据句。\n` +
+    `约束：\n- 所有输出中文；\n- 不要使用“建议/问题/优化/改进”等口水词做标题；\n- 标题必须可行动且具体；\n- 每项提供 1 条证据句，来自输入原文；\n- issues 与 suggestions 各最多返回 ${limit} 项。\n\n` +
+    `输入JSON（多条）：${JSON.stringify(items).slice(0, 12000)}\n\n` +
+    `输出JSON：{ "issues": [ {"title":"","summary":"","category":"性能|功能|体验|内容|账户|价格|其他","examples":[{"id":"","snippet":""}] } ], "suggestions": [ {"title":"","summary":"","examples":[{"id":"","snippet":""}] } ] }`;
+
+    const completion = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [
+        { role: 'system', content: '你是严谨的中文产品分析师，只返回严格 JSON。' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.2,
+      max_tokens: 2000,
+      response_format: { type: 'json_object' } as any,
+    });
+
+    const content = completion.choices?.[0]?.message?.content || '';
+    try {
+      const parsed = JSON.parse(content);
+      const issues = (Array.isArray(parsed.issues) ? parsed.issues : []).map((t: any) => ({
+        title: String(t.title || '').slice(0, 30),
+        summary: String(t.summary || '').slice(0, 500),
+        category: String(t.category || '其他'),
+        examples: Array.isArray(t.examples) ? t.examples.filter((e: any) => e && e.id && e.snippet).map((e: any) => ({ id: String(e.id), snippet: String(e.snippet).slice(0, 200) })) : [],
+      }));
+      const suggestions = (Array.isArray(parsed.suggestions) ? parsed.suggestions : []).map((t: any) => ({
+        title: String(t.title || '').slice(0, 30),
+        summary: String(t.summary || '').slice(0, 500),
+        examples: Array.isArray(t.examples) ? t.examples.filter((e: any) => e && e.id && e.snippet).map((e: any) => ({ id: String(e.id), snippet: String(e.snippet).slice(0, 200) })) : [],
+      }));
+      return { issues, suggestions };
+    } catch {
+      return { issues: [], suggestions: [] };
+    }
   }
 }

@@ -7,6 +7,7 @@ const storage = getStorage();
 const analysisService = new AnalysisService();
 
 // GET /api/apps/[id]/analysis - 获取聚合分析结果
+// Note: `params` is provided synchronously by Next.js route handlers
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

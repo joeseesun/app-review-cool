@@ -101,6 +101,8 @@ export interface DataStorage {
   
   // 评论管理
   getReviews(appId?: string): Promise<AppStoreReview[]>;
+  // 分页读取评论（用于分页分析）
+  getReviewsPage(appId: string, offset: number, limit: number): Promise<AppStoreReview[]>;
   saveReviews(reviews: AppStoreReview[]): Promise<void>;
   
   // 分析结果管理
